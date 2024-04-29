@@ -1,5 +1,5 @@
 # Well mixed
-# Fixed fractionsuscpetible
+# Fixed fraction suscpetible
 # At each time step, pick three people. If...
     # 2 are I, 1 is S, S -> E
     # 1 is I, >1 is E, one of E->I
@@ -31,11 +31,24 @@ dir_path_output = dir_path + "output/well_mixed_const_S_"
 
 
 def initial_population(N_tot: int, N_S: int, N_I: int):
+    """The population at time 0. 
+
+    Args:
+        N_tot (int): Population size
+        N_S (int): People who are susceptible to conversion
+        N_I (int): Initial cultists. 
+
+    Returns:
+        array: Initial population with randomly chosen cultists and susceptible
+    """
     population = non_S_val * np.ones(N_tot)
     population_possible_indices = np.arange(N_tot)
     # Get indices for S and I
     idx_S = rng.choice(a=population_possible_indices, size=N_S, replace=False)  # Draw N_S indices from population
-    idx_I = rng.choice(a=population_possible_indices[~idx_S], size=N_I, replace=False)  # Same, but cannot draw same as S
+
+    idx_chosen_by_S = np.in1d(population_possible_indices, idx_S)
+    population_possible_indices_I = population_possible_indices[~idx_chosen_by_S]
+    idx_I = rng.choice(a=population_possible_indices_I, size=N_I, replace=False)  # Cannot draw the members that S drew
     # Update values
     population[idx_S] = S_val
     population[idx_I] = I_val
@@ -63,7 +76,16 @@ def attempt_conversion(target: int, init1: int, init2: int) -> int:
     return target
 
 
-def evolve(N_tot, N_S, N_I, time_steps, dir_path_file=dir_path_output):    
+def evolve(N_tot: int, N_S: int, N_I: int, time_steps: int, dir_path_file=dir_path_output):    
+    """Time evolution of the cult conversion. 
+
+    Args:
+        N_tot (int): Population size
+        N_S (int): Number of susceptible people.
+        N_I (int): Number of cultits at time = 0.
+        time_steps (int): How long the code is run
+        dir_path_file (str, optional): Path to save the image to. Defaults to dir_path_output.
+    """
     population = initial_population(N_tot, N_S, N_I)
     population_history = np.empty((N_tot, time_steps))
     population_history[:, 0] = 1 * population
@@ -86,6 +108,8 @@ def evolve(N_tot, N_S, N_I, time_steps, dir_path_file=dir_path_output):
     
 
 def plot_SIE():
+    """Plot the Susceptible, Exposed and Cultist over time. 
+    """
     # Load data
     population_history = np.genfromtxt(dir_path_output+"population_history.gz")
     N_tot, time = np.shape(population_history)
