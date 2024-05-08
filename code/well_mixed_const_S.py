@@ -17,15 +17,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import general_functions as gf
 from tqdm import tqdm
-plt.style.use("code/presentation.mplstyle")
+from master import attempt_conversion, rng, non_S_val, S_val, E_val, I_val, dir_path
+
 
 # -- Parameters --
-rng = np.random.default_rng()
-non_S_val = -1
-S_val = 0
-E_val = 1
-I_val = 2
-dir_path = "code/"
 dir_path_image = dir_path + "image/well_mixed_const_S_"
 dir_path_output = dir_path + "output/well_mixed_const_S_"
 
@@ -53,27 +48,6 @@ def initial_population(N_tot: int, N_S: int, N_I: int):
     population[idx_S] = S_val
     population[idx_I] = I_val
     return population
-
-    
-def attempt_conversion(target: int, init1: int, init2: int) -> int:
-    """Given the state of three people, one target and two conversation initialisers, check if a conversion happens.
-
-    Args:
-        target (int): State of the possible convertee.
-        init1 (int): State of the first conversation initialiser.
-        init2 (int): State of the second conversation initialiser.
-
-    Returns:
-        int: target's updated value. 
-    """
-    # Target cannot be I
-    # Target is Susceptible, both initialisers are cultists. S - > E
-    if (target == S_val) and (init1 == I_val) and (init2 == I_val):
-        target = E_val
-    # Target is Exposed, at least one initialiser is cultist. E - > I
-    elif (target == E_val) and ((init1 == I_val) or (init2 == I_val)):
-        target = I_val
-    return target
 
 
 def evolve(N_tot: int, N_S: int, N_I: int, time_steps: int, dir_path_file=dir_path_output):    
