@@ -117,11 +117,11 @@ def plot_SIE():
 if __name__ == "__main__":
     # Parameters
     N_tot = 1000
-    N_I = 100
+    N_I = 200
     p_S = 0.01  # P(non-S -> S)
     p_non_S = 0.05  # P(S -> non_S)
     
-    time_steps = 35_0
+    time_steps = 35_000
     
     # Run evolution
     get_data = True
@@ -130,3 +130,6 @@ if __name__ == "__main__":
     
     # Visualize
     plot_SIE()
+    
+    
+    
