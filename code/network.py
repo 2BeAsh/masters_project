@@ -126,7 +126,7 @@ class ConversionPropagation():
         
 
     def update(self):
-        
+        #test
         
         self._remove_add_edges()
         self._crisis_strength_random_walk()
