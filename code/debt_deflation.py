@@ -2,15 +2,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import general_functions
 from tqdm import tqdm
+import networkx as nx
+from time import time
+
+import matplotlib.animation as animation
+import functools
 
 
 class DebtDeflation():
     
-    def __init__(self, N: int, time_steps: int, interest: float, K_market: float):
+    def __init__(self, N: int, time_steps: int, interest: float, K_market: float, K_rival: float):
         self.N = N
         self.time_steps = time_steps
         self.interest = interest
         self.K_market = K_market
+        self.K_rival = K_rival
         self.dir_path = "code/"
         self.dir_path_output = self.dir_path + "output/"
         self.dir_path_image = self.dir_path + "image/"
@@ -23,11 +29,38 @@ class DebtDeflation():
         self.money = np.zeros(self.N)
 
 
-    def _target_market_sigmoidal_relation(self, target_idx: int) -> float:
-        company_value_excluding_target = self.company_value[np.arange(self.N) != target_idx]
-        market_sum_excluding_target = np.sum(company_value_excluding_target)
-        return self.company_value[target_idx] * market_sum_excluding_target / (self.K_market + market_sum_excluding_target)
+    def _create_rival_network(self, connection_probability=0.1) -> None:
+        """Initialize Erdos-Renyi network for who you are rivals with.
+        """
+        self.rival_network = nx.erdos_renyi_graph(n=self.N, p=connection_probability)        
 
+
+    def _target_market_sigmoidal_relation(self, target_idx: int) -> float:
+        """Relationship between one company and the rest of the market. Market add, rivals subtract.
+
+        Args:
+            target_idx (int): Target company.
+
+        Returns:
+            float: Term added to the change in money due to company-market relation
+        """
+        # Sum up all of the market, excluding the target and rivals
+        # Get rival indices
+        rival_idx = list(self.rival_network.neighbors(target_idx))
+        companies_to_exclude = rival_idx + [target_idx]
+        company_value_excluding = np.delete(self.company_value, companies_to_exclude)
+        # company_value_excluding_target = self.company_value[np.arange(self.N) != target_idx]
+        market_sum_excluding = np.sum(company_value_excluding)
+        
+        # Target-market relation
+        target_market_relation = self.company_value[target_idx] * market_sum_excluding / (self.K_market + market_sum_excluding)
+        
+        # Target-rival relation
+        rival_sum = np.sum(self.company_value[rival_idx])
+        target_rival_relation = - rival_sum * K_rival
+        
+        return target_market_relation + target_rival_relation
+        
 
     def _delta_money(self, target_idx: int) -> None:
         target_market_relation = self._target_market_sigmoidal_relation(target_idx)
@@ -57,11 +90,12 @@ class DebtDeflation():
             self.money[target_idx] = 0
             self.debt[target_idx] = 0
             self.company_value[target_idx] = 1
-            
+    
     
     def simulation(self) -> None:
-        # Initial values
+        # Initialize market and network
         self._initial_market()
+        self._create_rival_network()
         # History
         company_value_hist = np.empty((self.N, self.time_steps))
         debt_hist = np.empty_like(company_value_hist)
@@ -90,16 +124,23 @@ class DebtDeflation():
         all_data[:, :, 2] = money_hist
         filename = self.dir_path_output + "debt_deflation_steps" + self.file_parameter_addon + ".npy"
         np.save(filename, arr=all_data)
-        
-        
-    def plot(self):
-        # Load data and create time values array
+    
+    
+    def _load_data(self):
         filename = self.dir_path_output + "debt_deflation_steps" + self.file_parameter_addon + ".npy"
         data_all = np.load(filename)
         company_value = data_all[:, :, 0]
         debt = data_all[:, :, 1]
         money = data_all[:, :, 2]
         
+        return company_value, debt, money
+    
+        
+    def plot_means(self):
+        """Plot averages.
+        """
+        # Load data and create time values array
+        company_value, debt, money = self._load_data()
         # Averages
         company_value_mean = np.mean(company_value, axis=0)
         debt_mean = np.mean(debt, axis=0)
@@ -122,20 +163,54 @@ class DebtDeflation():
         figname = self.dir_path_image + f"means" + self.file_parameter_addon + ".png"
         plt.savefig(figname)
         plt.show()
+    
+    
+    def animate_size_distribution(self):
+        time_i = time()
+        # Load data and create time values array
+        company_value, debt, money = self._load_data()
+        # Bin data
+        Nbins = int(np.sqrt(self.time_steps))
+        bin_edges = np.linspace(company_value.min(), company_value.max(), Nbins)
+        
+        fig, ax = plt.subplots()
+        # n, _ = np.histogram(company_value[:, 0], bin_edges)  
+        _, _, bar_container = ax.hist(company_value[:, 0], bin_edges)  # Initial histogram 
+        ax.set(xlim=(bin_edges[0], bin_edges[-1]), title="Time = 0")
+                
+        def animate(i, bar_container):
+            data = company_value[:, i]
+            n, _ = np.histogram(data, bin_edges)
+            for count, rect in zip(n, bar_container.patches):
+                rect.set_height(count)
+            
+            ax.set_title(f"Time = {i}")
+            return bar_container.patches
+        
+        anim = functools.partial(animate, bar_container=bar_container)
+        ani = animation.FuncAnimation(fig, anim, frames=self.time_steps, interval=1)
+        time_create_ani = time()
+        animation_name = self.dir_path_image + "size_distribution_animation" + self.file_parameter_addon + ".mp4"
+        ani.save(animation_name, fps=30)
+        time_save_ani = time()
+        print("Time creating animation: \t", time_create_ani - time_i)
+        print("Time saving animation: \t", time_save_ani - time_create_ani)
         
 
 if __name__ == "__main__":
     # Parameters
-    N_agents = 10_000
+    N_agents = 100
     time_steps = 1000
     interest = 1.25
     K_market = 10
+    K_rival = 0.1
     
-    debtdeflation = DebtDeflation(N=N_agents, time_steps=time_steps, interest=interest, K_market=K_market)
+    debtdeflation = DebtDeflation(N=N_agents, time_steps=time_steps, interest=interest, K_market=K_market, K_rival=K_rival)
     
     generate_data = True
     if generate_data == True:
         debtdeflation.simulation()
     
-    debtdeflation.plot()
+    # debtdeflation.plot_means()
+    debtdeflation.animate_size_distribution()
     
