@@ -57,7 +57,7 @@ class DebtDeflation():
         
         # Target-rival relation
         rival_sum = np.sum(self.company_value[rival_idx])
-        target_rival_relation = - rival_sum * K_rival
+        target_rival_relation = - rival_sum * K_rival  # NOTE should probably change to non-linear
         
         return target_market_relation + target_rival_relation
         
