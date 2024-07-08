@@ -146,7 +146,6 @@ class DebtDeflationVisualization():
         print("Time creating animation: \t", time_create_ani - time_i)
         print("Time saving animation: \t", time_save_ani - time_create_ani)
         
-        
 
 if __name__ == "__main__":    
     # visualize = DebtDeflationVisualization(number_of_companies=N_agents, 
@@ -157,7 +156,7 @@ if __name__ == "__main__":
     #                               equilibrium_distance_fraction=equilibrium_distance_fraction, 
     #                               time_steps=time_steps)
     
-    filename = "T1000_N100_r1_alpha0.05_beta0.0_sigma0.9_epsilon0.1"
+    filename = "Steps1000_Companies100_Interest1_Efficiency1_LoanProb0.0_BuyFraction0.9_EquilibriumStep0.25"
     visualize = DebtDeflationVisualization(filename)
     
     visualize.plot_companies(N_plot=4)
