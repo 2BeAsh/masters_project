@@ -105,10 +105,22 @@ class DebtDeflationVisualization():
         plt.show()
 
 
+    def size_hist(self):
+        company_value, debt, money = self._load_data()
+        Nbins = int(np.sqrt(self.time_steps))
+        bin_edges = np.linspace(company_value.min(), company_value.max(), Nbins)
+
+        company_value_final = company_value[:, -1]
+        fig, ax = plt.subplots()
+        ax.hist(company_value_final, bins=Nbins)
+        ax.set(xlabel="Production", ylabel="")
+        plt.show()
+        
+
     def animate_size_distribution(self):
         time_i = time()
         # Load data and create time values array
-        company_value, debt, money = self._load_data(self.filename)
+        company_value, debt, money = self._load_data()
         # Bin data
         Nbins = int(np.sqrt(self.time_steps))
         bin_edges = np.linspace(company_value.min(), company_value.max(), Nbins)
@@ -156,10 +168,11 @@ if __name__ == "__main__":
     #                               equilibrium_distance_fraction=equilibrium_distance_fraction, 
     #                               time_steps=time_steps)
     
-    filename = "Steps1000_Companies100_Interest1_Efficiency1_LoanProb0.0_BuyFraction0.9_EquilibriumStep0.25"
+    filename = "Steps1000_Companies100_Interest1_Efficiency0.05_LoanProb0.0_BuyFraction1_EquilibriumStep0.01"
     visualize = DebtDeflationVisualization(filename)
     
-    visualize.plot_companies(N_plot=4)
-    visualize.plot_means()
+    # visualize.plot_companies(N_plot=4)
+    # visualize.plot_means()
     
     # visualize.animate_size_distribution()
+    visualize.size_hist()

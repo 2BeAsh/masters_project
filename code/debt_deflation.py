@@ -142,7 +142,7 @@ class DebtDeflation():
             # Make N transactions
             for _ in range(self.N):
                 # Pick buyer and seller
-                buyer_idx, seller_idx = self._buyer_seller_idx_uniform()
+                buyer_idx, seller_idx = self._buyer_seller_idx_money_scaling()
                 self._step(buyer_idx, seller_idx)
             # Pay rent and check for bankruptcy
             # self._pay_rent()
@@ -162,10 +162,10 @@ if __name__ == "__main__":
     N_agents = 100
     time_steps = 1000
     interest = 1
-    money_to_production_efficiency = 1  # alpha
+    money_to_production_efficiency = 0.05  # alpha
     loan_probability = 0.0  # beta
-    buy_fraction = 0.9  # sigma
-    equilibrium_distance_fraction = 0.25 # 1 / 10  # epsilon
+    buy_fraction = 1  # sigma
+    equilibrium_distance_fraction = 0.01 # 1 / 10  # epsilon
     
     debtdeflation = DebtDeflation(number_of_companies=N_agents, 
                                   money_to_production_efficiency=money_to_production_efficiency, 
