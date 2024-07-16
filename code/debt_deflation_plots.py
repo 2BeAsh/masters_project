@@ -7,6 +7,7 @@ from matplotlib.lines import Line2D
 import matplotlib.animation as animation
 import functools
 from debt_deflation_well_mixed import filename_parameter_addon
+from debt_deflation_1d import filename_parameter_addon_1d
 
 
 class DebtDeflationVisualization():
@@ -21,7 +22,7 @@ class DebtDeflationVisualization():
 
     def display_parameters(self):
         # Split at underscores "_"
-        filename_list = filename.split("_")
+        filename_list = self.filename.split("_")
         
         # Combine strings and add newlines
         filename_comb = ""
@@ -161,12 +162,29 @@ class DebtDeflationVisualization():
         
 
 if __name__ == "__main__":      
-    #filename = "Steps1000_Companies100_Interest1_Efficiency0.05_LoanProb0.0_BuyFraction1_EquilibriumStep0.01"
-    filename = filename_parameter_addon
-    visualize = DebtDeflationVisualization(filename)
+    run_well_mixed = True
+    run_1d = True
     
-    visualize.plot_companies(N_plot=4)
-    visualize.plot_means()
     
-    # visualize.animate_size_distribution()
-    visualize.final_time_size_dist()
+    # Visualize Well Mixed
+    if run_well_mixed:
+        #filename = "Steps1000_Companies100_Interest1_Efficiency0.05_LoanProb0.0_BuyFraction1_EquilibriumStep0.01"
+        filename = filename_parameter_addon
+        visualize = DebtDeflationVisualization(filename)
+        
+        visualize.plot_companies(N_plot=4)
+        visualize.plot_means()
+        
+        # visualize.animate_size_distribution()
+        visualize.final_time_size_dist()
+
+
+    # Visualize 1d
+    if run_1d:    
+        visualize_1d = DebtDeflationVisualization(filename_parameter_addon_1d)
+        
+        visualize_1d.plot_companies(N_plot=4)
+        visualize_1d.plot_means()
+    
+        # visualize.animate_size_distribution()
+        visualize_1d.final_time_size_dist()
