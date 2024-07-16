@@ -3,7 +3,7 @@ from tqdm import tqdm
 
 
 class DebtDeflation():
-    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, loan_probability: float, interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, time_steps: int):
+    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, include_debt: bool, time_steps: int):
         """Initializer
 
         Args:
@@ -17,17 +17,17 @@ class DebtDeflation():
         """
         self.N = number_of_companies
         self.alpha = money_to_production_efficiency  # Money to production efficiency
-        self.beta = loan_probability  # Probability to take a loan
         self.r = interest_rate  # Interest rate
         self.buy_fraction = buy_fraction  # When doing a transaction, how large a fraction of min(seller production, buyer money) is used.
         self.epsilon = equilibrium_distance_fraction  # In inflation updates, the fraction the system goes toward equilibrlium.
+        self.include_debt = include_debt
         self.time_steps = time_steps  # Steps taken in system evolution.
         
         # Local paths for saving files.
         self.dir_path = "code/"
         self.dir_path_output = self.dir_path + "output/"
         self.dir_path_image = self.dir_path + "image/"
-        self.file_parameter_addon = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.r}_Efficiency{self.alpha}_LoanProb{self.beta}_BuyFraction{self.buy_fraction}_EquilibriumStep{self.epsilon}"
+        self.file_parameter_addon = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.r}_Efficiency{self.alpha}_BuyFraction{self.buy_fraction}_EquilibriumStep{self.epsilon}"
 
 
     def _initial_market(self) -> None:
@@ -38,25 +38,25 @@ class DebtDeflation():
         self.debt = np.zeros(self.N)
         self.money = np.ones(self.N)
     
-    
+        
     def _step(self, buyer_idx, seller_idx) -> None:
-        """First make transaction, then check if the buyer takes a loan.
+        """First check if the buyer needs to take a loan to match the sellers production, then make transaction and update values
 
         Args:
             buyer_idx (int): _description_
             seller_idx (int): _description_
         """
-        # Amount bought is limited by the sellers production and the buyers money
+        # If the buyer's money is less than the seller's production, the buyer takes a loan to match the production
+        if self.money[buyer_idx] < self.production[seller_idx] and self.include_debt:
+            loan_size = self.production[seller_idx] - self.money[buyer_idx]
+            self.money[buyer_idx] += loan_size
+            self.debt[buyer_idx] += loan_size
+        
         amount_bought = self.buy_fraction * np.min([self.production[seller_idx], self.money[buyer_idx]])
         
         self.money[seller_idx] += amount_bought
         self.money[buyer_idx] -= amount_bought
         self.production[buyer_idx] += self.alpha * amount_bought
-        
-        # Buyer takes loan with probability beta, increasing debt and money by the same amount
-        if self.beta > np.random.uniform(low=0, high=1):
-            self.debt[buyer_idx] += amount_bought / self.r
-            self.money[buyer_idx] += amount_bought / self.r
     
     
     def _buyer_seller_idx_money_scaling(self) -> tuple:
@@ -67,7 +67,8 @@ class DebtDeflation():
             tuple: buyer idx, seller idx
         """
         seller_idx = np.random.randint(low=0, high=self.N)
-        buyer_prob = self.money / self.money.sum()  # The probability to buy is proportional to ones money
+        money_wrt_negative_vals = np.maximum(self.money, 0)  # If has negative money, give a 0 chance to buy.
+        buyer_prob = money_wrt_negative_vals / money_wrt_negative_vals.sum()  # The probability to buy is proportional to ones money. 
         buyer_idx = np.random.choice(np.arange(self.N), p=buyer_prob)
         return buyer_idx, seller_idx
     
@@ -82,7 +83,7 @@ class DebtDeflation():
         seller_idx = np.random.randint(low=0, high=self.N)
         buyer_idx = np.random.randint(low=0, high=self.N)
         return buyer_idx, seller_idx
-    
+        
     
     def _pay_rent(self):
         """Money is update according to how much debt the firm holds.
@@ -91,9 +92,10 @@ class DebtDeflation():
     
     
     def _bankruptcy_check(self):
-        """Companies with negative money goes bankrupt, starting a new company in its place with initial values"""
+        """Bankrupt if alpha * p + m < d. If goes bankrupt, start a new company in its place with initial values.
+        Intuition is that when m=0, you must have high enough production to pay off the debt in one transaction i.e. alpha * p > d"""
         # Find all companies who have gone bankrupt
-        bankrupt_idx = np.where(self.money < 1e-10)
+        bankrupt_idx = np.where(self.alpha * self.production + self.money < self.debt)
         # Set their values to the initial values
         self.money[bankrupt_idx] = 1
         self.debt[bankrupt_idx] = 0
@@ -145,8 +147,9 @@ class DebtDeflation():
                 buyer_idx, seller_idx = self._buyer_seller_idx_money_scaling()
                 self._step(buyer_idx, seller_idx)
             # Pay rent and check for bankruptcy
-            # self._pay_rent()
-            # self._bankruptcy_check()
+            if self.include_debt:
+                self._pay_rent()
+                self._bankruptcy_check()
             self._inflation(self.epsilon)
             # Store values
             self.production_hist[:, i] = self.production
@@ -155,24 +158,25 @@ class DebtDeflation():
         
         # Save data to file
         self._data_to_file()
-        
+    
+
+# Parameters
+N_agents = 100
+time_steps = 1000
+interest = 1
+money_to_production_efficiency = 0.05  # alpha, growth exponent
+buy_fraction = 1  # sigma
+equilibrium_distance_fraction = 0.01  # epsilon
+
+debtdeflation = DebtDeflation(number_of_companies=N_agents, 
+                                money_to_production_efficiency=money_to_production_efficiency, 
+                                interest_rate=interest, 
+                                buy_fraction=buy_fraction, 
+                                equilibrium_distance_fraction=equilibrium_distance_fraction, 
+                                time_steps=time_steps,
+                                include_debt=True)
+
+filename_parameter_addon = debtdeflation.file_parameter_addon
 
 if __name__ == "__main__":
-    # Parameters
-    N_agents = 100
-    time_steps = 1000
-    interest = 1
-    money_to_production_efficiency = 0.05  # alpha
-    loan_probability = 0.0  # beta
-    buy_fraction = 1  # sigma
-    equilibrium_distance_fraction = 0.01 # 1 / 10  # epsilon
-    
-    debtdeflation = DebtDeflation(number_of_companies=N_agents, 
-                                  money_to_production_efficiency=money_to_production_efficiency, 
-                                  loan_probability=loan_probability, 
-                                  interest_rate=interest, 
-                                  buy_fraction=buy_fraction, 
-                                  equilibrium_distance_fraction=equilibrium_distance_fraction, 
-                                  time_steps=time_steps)
-    
     debtdeflation.simulation()
