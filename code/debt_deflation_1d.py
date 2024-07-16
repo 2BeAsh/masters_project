@@ -17,7 +17,7 @@ class DebtDeflation_1d(DebtDeflation):
             time_steps (int): _description_
         """
         super().__init__(number_of_companies, money_to_production_efficiency, interest_rate, buy_fraction, equilibrium_distance_fraction, include_debt, time_steps)
-        self.file_parameter_addon = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.r}_Efficiency{self.alpha}_BuyFraction{self.buy_fraction}_EquilibriumStep{self.epsilon}_Dim1D"
+        self.file_parameter_addon = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.r}_Efficiency{self.alpha}_BuyFraction{self.buy_fraction}_EquilibriumStep{self.epsilon}_1D"
     
     
     def _buyer_seller_idx_1d(self) -> tuple:
@@ -71,13 +71,16 @@ class DebtDeflation_1d(DebtDeflation):
         self._data_to_file()
 
 
+
+debtdeflation_1d = DebtDeflation_1d(number_of_companies=N_agents, 
+                            money_to_production_efficiency=money_to_production_efficiency, 
+                            interest_rate=interest, 
+                            buy_fraction=buy_fraction, 
+                            equilibrium_distance_fraction=equilibrium_distance_fraction, 
+                            time_steps=time_steps,
+                            include_debt=True)
+filename_parameter_addon_1d = debtdeflation_1d.file_parameter_addon
+
+
 if __name__ == "__main__":
-    debtdeflation_1d = DebtDeflation_1d(number_of_companies=N_agents, 
-                                money_to_production_efficiency=money_to_production_efficiency, 
-                                interest_rate=interest, 
-                                buy_fraction=buy_fraction, 
-                                equilibrium_distance_fraction=equilibrium_distance_fraction, 
-                                time_steps=time_steps,
-                                include_debt=True)
     debtdeflation_1d.simulation()
-    filename_parameter_addon_1d = debtdeflation_1d.file_parameter_addon
