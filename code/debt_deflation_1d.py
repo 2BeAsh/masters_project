@@ -25,15 +25,15 @@ class DebtDeflation_1d(DebtDeflation):
         """
         # Buyer is prop to money
         money_wrt_negative_vals = np.maximum(self.money, 0)  # If has negative money, give a 0 chance to buy.
-        buyer_prob = money_wrt_negative_vals / money_wrt_negative_vals.sum()  # The probability to buy is proportional to ones money. 
+        buyer_prob = money_wrt_negative_vals / money_wrt_negative_vals.sum()  # The probability to buy is proportional to one's money. 
         buyer_idx = np.random.choice(np.arange(self.N), p=buyer_prob)
         
         # Seller one of its neighbours, taking closed boundaries into account
         minus_or_plus_one = 2 * np.random.randint(low=0, high=2) - 1
         seller_idx = buyer_idx + minus_or_plus_one
-        if seller_idx == self.N:
+        if seller_idx == self.N:  # Right boundary
             seller_idx = buyer_idx - 1
-        elif seller_idx < 0:
+        elif seller_idx < 0:  # Left boundary
             seller_idx = buyer_idx + 1
         
         return buyer_idx, seller_idx

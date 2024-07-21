@@ -114,8 +114,25 @@ class DebtDeflationVisualization():
         
         production_final = production[:, -1]
         fig, ax = plt.subplots()
-        ax.hist(production_final, bins=Nbins)
+        n, _, _ = ax.hist(production_final, bins=Nbins)
         ax.set(xlabel="Production", title="Final time production distribution", ylabel="Frequency")
+        plt.show()
+        
+
+    def final_time_values(self):
+        production, debt, money = self._load_data()
+        production_final = production[:, -1]
+        debt_final = debt[:, -1]
+        money_final = money[:, -1]
+        x_vals = np.arange(len(money_final))
+        
+        fig, ax = plt.subplots()
+        ax.plot(x_vals, production_final, ".-", label="Production")
+        # ax.plot(x_vals, debt_final, "-.", label="Debt")
+        ax.plot(x_vals, money_final, ".-", label="Money")
+        
+        ax.set(xlabel="Company Number", ylabel="$", title="Final time values", yscale="log")
+        ax.legend(ncols=3, bbox_to_anchor=(0.5, 0.9), loc="lower center")
         plt.show()
         
 
@@ -123,46 +140,50 @@ class DebtDeflationVisualization():
         time_i = time()
         # Load data and create time values array
         production, debt, money = self._load_data()
+        
         # Bin data
         Nbins = int(np.sqrt(self.time_steps))
         bin_edges = np.linspace(production.min(), production.max(), Nbins)
         
+        # Figure setup        
         fig, ax = plt.subplots()
-        # n, _ = np.histogram(production[:, 0], bin_edges)  
         _, _, bar_container = ax.hist(production[:, 0], bin_edges)  # Initial histogram 
         ax.set(xlim=(bin_edges[0], bin_edges[-1]), title="Time = 0")
+
         # Text
         display_parameters_str = self.display_parameters()
-        # display_parameters_str = (r"$N_{agent} = $" + str(self.N) 
-        #                           + "\n" + r"Interest $=$ " + str(self.r) 
-        #                           + "\n" + r"$\alpha = $ " + str(self.alpha)
-        #                           + "\n" + r"$\beta = $ " + str(self.beta))
         ax.text(x=0.01, y=0.9, s=display_parameters_str, transform=ax.transAxes, horizontalalignment='left', verticalalignment='center', fontsize=9)
-  
+
+        
         def animate(i, bar_container):
+            """Frame animation function for creating a histogram."""
+            # Histogram
             data = production[:, i]
             n, _ = np.histogram(data, bin_edges)
             for count, rect in zip(n, bar_container.patches):
                 rect.set_height(count)
             
+            # Title
             ax.set_title(f"Time = {i}")
             return bar_container.patches
         
+        # Create the animation
         anim = functools.partial(animate, bar_container=bar_container)
         ani = animation.FuncAnimation(fig, anim, frames=self.time_steps, interval=1)
         
-        time_create_ani = time()
-        
+        # Save animation
+        time_create_ani = time()  # Record time
         animation_name = self.dir_path_image + "size_distribution_animation_" + self.filename + ".mp4"
         ani.save(animation_name, fps=30)
         
+        # Display times
         time_save_ani = time()
         print("Time creating animation: \t", time_create_ani - time_i)
         print("Time saving animation: \t", time_save_ani - time_create_ani)
         
 
 if __name__ == "__main__":      
-    run_well_mixed = True
+    run_well_mixed = False
     run_1d = True
     
     
@@ -183,8 +204,9 @@ if __name__ == "__main__":
     if run_1d:    
         visualize_1d = DebtDeflationVisualization(filename_parameter_addon_1d)
         
-        visualize_1d.plot_companies(N_plot=4)
-        visualize_1d.plot_means()
+        # visualize_1d.plot_companies(N_plot=4)
+        # visualize_1d.plot_means()
     
-        # visualize.animate_size_distribution()
-        visualize_1d.final_time_size_dist()
+        # visualize_1d.animate_size_distribution()
+        # visualize_1d.final_time_size_dist()
+        visualize_1d.final_time_values()
