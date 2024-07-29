@@ -46,14 +46,19 @@ class DebtDeflation():
             buyer_idx (int): _description_
             seller_idx (int): _description_
         """
-        # If the buyer's money is less than the seller's production, the buyer takes a loan to match the production
+        # If the buyer's money is less than the seller's production, 
+        # the buyer takes a loan to try and match the production. 
+        # The buyer cannot take a loan larger than its company size
         if self.money[buyer_idx] < self.production[seller_idx] and self.include_debt:
-            loan_size = self.production[seller_idx] - self.money[buyer_idx]
+            # Calculate loan size
+            money_production_difference = self.production[seller_idx] - self.money[buyer_idx]
+            loan_size = np.min([money_production_difference, self.production[buyer_idx]])
+            # Update values
             self.money[buyer_idx] += loan_size
             self.debt[buyer_idx] += loan_size
         
         amount_bought = self.buy_fraction * np.min([self.production[seller_idx], self.money[buyer_idx]])
-        
+        # Update values
         self.money[seller_idx] += amount_bought
         self.money[buyer_idx] -= amount_bought
         self.production[buyer_idx] += self.alpha * amount_bought
@@ -162,7 +167,7 @@ class DebtDeflation():
 
 # Parameters
 N_agents = 100
-time_steps = 10000
+time_steps = 1000
 interest = 1
 money_to_production_efficiency = 0.05  # alpha, growth exponent
 buy_fraction = 1  # sigma
