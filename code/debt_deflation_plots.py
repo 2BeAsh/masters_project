@@ -291,9 +291,9 @@ class DebtDeflationVisualization():
             ax_d.grid()
             ax_m.grid()
             # Ticks
-            ax_p.set_xticks(ticks=x_vals, fontsize=5)
-            ax_d.set_xticks(ticks=x_vals, fontsize=5)
-            ax_m.set_xticks(ticks=x_vals, fontsize=5)
+            ax_p.set_xticks(ticks=x_vals, labels=x_vals, fontsize=3)
+            ax_d.set_xticks(ticks=x_vals, labels=x_vals, fontsize=3)
+            ax_m.set_xticks(ticks=x_vals, labels=x_vals, fontsize=3)
             # Parameters text
             self._add_parameters_text(ax_p)
 
@@ -319,8 +319,8 @@ class DebtDeflationVisualization():
         
 
 if __name__ == "__main__":      
-    run_well_mixed = True
-    run_1d = False
+    run_well_mixed = False
+    run_1d = True
     
     
     # Visualize Well Mixed
@@ -356,10 +356,5 @@ if __name__ == "__main__":
         
         # Values of all companies along x-axis
         visualize_1d.final_time_values()
-        # visualize_1d.animate_values(scale="log", on_same_row=False)
+        visualize_1d.animate_values(scale="log", on_same_row=False)
         
-        
-        
-        """
-        1d k naboer bred
-        """
