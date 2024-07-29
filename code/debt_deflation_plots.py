@@ -13,14 +13,17 @@ from debt_deflation_1d import filename_parameter_addon_1d
 class DebtDeflationVisualization():
     def __init__(self, filename):
         # Local paths for saving files.
+        self.filename = filename
         self.dir_path = "code/"
         self.dir_path_output = self.dir_path + "output/"
-        self.dir_path_image = self.dir_path + "image/"
+        
+        # Get image path from filename
+        filename_split = filename.split("_")
+        image_sufix = filename_split[-1] + "/"
+        self.dir_path_image = self.dir_path + "image/" + image_sufix
 
-        self.filename = filename
 
-
-    def display_parameters(self):
+    def _display_parameters(self):
         # Split at underscores "_"
         filename_list = self.filename.split("_")
         
@@ -29,11 +32,12 @@ class DebtDeflationVisualization():
         for arg_name in filename_list:
             filename_comb += arg_name + "\n"
         return filename_comb
-        # display_parameters_str = (r"$N_{agent} = $" + str(self.N) 
-        #                           + "\n" + r"Interest $=$ " + str(self.r) 
-        #                           + "\n" + r"$\alpha = $ " + str(self.alpha)
-        #                           + "\n" + r"$\beta = $ " + str(self.beta))
 
+
+    def _add_parameters_text(self, axis, x=0.1, y=0.8):
+        display_parameters_str = self._display_parameters()
+        axis.text(x=x, y=y, s=display_parameters_str, transform=axis.transAxes, horizontalalignment='left', verticalalignment='center', fontsize=9)
+        
 
     def _load_data(self) -> None:
         data_all = np.load(self.dir_path_output + self.filename + ".npy")
@@ -67,9 +71,9 @@ class DebtDeflationVisualization():
         ax.legend(handles=legend_elements, ncols=3, bbox_to_anchor=(0.5, 0.9), loc="lower center")
 
         # Display parameters
-        display_parameters_str = self.display_parameters()
-        ax.text(x=0.1, y=0.8, s=display_parameters_str, transform=ax.transAxes, horizontalalignment='left', verticalalignment='center', fontsize=9)
+        self._add_parameters_text(ax)
 
+        # Save figure
         figname = self.dir_path_image + f"means_" + self.filename + ".png"
         plt.savefig(figname)
         plt.show()
@@ -98,8 +102,8 @@ class DebtDeflationVisualization():
         ax2.set(ylabel="$", xlabel="Time", title="Money")
         
         # Display parameter values
-        display_parameters_str = self.display_parameters()
-        ax0.text(x=0.1, y=0.8, s=display_parameters_str, transform=ax0.transAxes, horizontalalignment='left', verticalalignment='center', fontsize=9)
+        self._add_parameters_text(ax0)
+        
         fig.suptitle(f"First {N_plot} companies", fontsize=15, fontstyle="italic")
         # Save figure
         figname = self.dir_path_image + f"single_companies_" + self.filename + ".png"
@@ -116,6 +120,14 @@ class DebtDeflationVisualization():
         fig, ax = plt.subplots()
         n, _, _ = ax.hist(production_final, bins=Nbins)
         ax.set(xlabel="Production", title="Final time production distribution", ylabel="Frequency")
+
+        # Parameters text
+        self._add_parameters_text(ax)
+
+        # Save figure
+        figname = self.dir_path_image + f"final_time_dist_" + self.filename + ".png"
+        plt.savefig(figname)
+        
         plt.show()
         
 
@@ -125,14 +137,52 @@ class DebtDeflationVisualization():
         debt_final = debt[:, -1]
         money_final = money[:, -1]
         x_vals = np.arange(len(money_final))
+
+        # Since using log, cannot have <= 0 values
+        y_min = 1e-3
+        money_final = np.maximum(money_final, y_min)
+        debt_final = np.maximum(debt_final, y_min)
+
+        # Create figure
+        fig, ax = plt.subplots(nrows=3)
+        ax_p, ax_d, ax_m = ax
         
-        fig, ax = plt.subplots()
-        ax.plot(x_vals, production_final, ".-", label="Production")
-        # ax.plot(x_vals, debt_final, "-.", label="Debt")
-        ax.plot(x_vals, money_final, ".-", label="Money")
+        # Lines
+        ax_p.plot(x_vals, production_final, ".", color="rebeccapurple")
+        ax_d.plot(x_vals, debt_final, "x", color="firebrick")
+        ax_m.plot(x_vals, money_final, "*", color="black")
         
-        ax.set(xlabel="Company Number", ylabel="$", title="Final time values", yscale="log")
-        ax.legend(ncols=3, bbox_to_anchor=(0.5, 0.9), loc="lower center")
+        # Axes setup
+        # Legend
+        legend_elements = [Line2D([], [], color="rebeccapurple", marker=".", ls="none", label="Production"),
+                        Line2D([], [], color="firebrick", marker="x", ls="none",label="Debt"),
+                        Line2D([], [], color="black", marker="*", ls="none", label="Money"),]
+        ax_p.legend(handles=legend_elements, ncols=3, bbox_to_anchor=(0.5, 0.99), loc="lower center")
+        # Scale
+        ax_p.set_yscale("log")
+        ax_d.set_yscale("log")
+        ax_m.set_yscale("log")
+        # Axis set
+        N = np.shape(production)[0]
+        ax_p.set(xlim=(0, N), ylim=(np.min(production_final), np.max(production_final)), ylabel="Production value")
+        ax_d.set(xlim=(0, N), ylim=(np.min(debt_final), np.max(debt_final)), ylabel="Debt")
+        ax_m.set(xlim=(0, N), ylim=(np.min(money_final), np.max(money_final)), xlabel="Company Number", ylabel="Money")
+        # Grid
+        ax_p.grid()
+        ax_d.grid()
+        ax_m.grid()
+        # Ticks
+        ax_p.set_xticks(ticks=x_vals, labels=x_vals, fontsize=3)
+        ax_d.set_xticks(ticks=x_vals, labels=x_vals, fontsize=3)
+        ax_m.set_xticks(ticks=x_vals, labels=x_vals, fontsize=3)
+
+        # Display paraemters
+        self._add_parameters_text(ax_p, x=0.05, y=0.7)
+        
+        # Save figure
+        figname = self.dir_path_image + f"final_time_values" + self.filename + ".png"
+        plt.savefig(figname)
+        
         plt.show()
         
 
@@ -151,10 +201,8 @@ class DebtDeflationVisualization():
         ax.set(xlim=(bin_edges[0], bin_edges[-1]), title="Time = 0")
 
         # Text
-        display_parameters_str = self.display_parameters()
-        ax.text(x=0.01, y=0.9, s=display_parameters_str, transform=ax.transAxes, horizontalalignment='left', verticalalignment='center', fontsize=9)
+        self._add_parameters_text(ax)
 
-        
         def animate(i, bar_container):
             """Frame animation function for creating a histogram."""
             # Histogram
@@ -181,10 +229,98 @@ class DebtDeflationVisualization():
         print("Time creating animation: \t", time_create_ani - time_i)
         print("Time saving animation: \t", time_save_ani - time_create_ani)
         
+        
+    def animate_values(self, scale="linear", on_same_row=True):
+        # Store time at initial time to later find the time taken for different parts of the animation
+        time_i = time()
+        
+        # Load data
+        production, debt, money = self._load_data()
+        N = np.shape(production)[0]
+        x_vals = np.arange(N)
+        
+        # If using logscale, set minimum value as log(0) = -infty
+        y_min = np.min([production, debt, money])
+        if scale == "log":
+            y_min = 1e-3
+            money = np.maximum(money, y_min)
+            debt = np.maximum(debt, y_min)
+        
+        # Initial image and plot setup
+        if on_same_row:
+            # Find ylim
+            y_max = np.max([production, debt, money])
+            ylim = (y_min, y_max)
+            
+            fig, ax = plt.subplots()        
+            line_prod = ax.plot(x_vals, production[:, 0], ".", label="Production")[0]
+            line_debt = ax.plot(x_vals, debt[:, 0], "x", label="Debt", alpha=0.9)[0]
+            line_money = ax.plot(x_vals, money[:, 0], "*", label="Money", alpha=0.8)[0]
+            ax.legend(ncols=3, bbox_to_anchor=(0.5, 0.9), loc="lower center")
+            ax.set_yscale(scale)
+            ax.set(xlim=(0, N), ylim=ylim, xlabel="Company Number", ylabel="$")
+            ax.grid()
+            # Parameters text
+            self._add_parameters_text(ax)
+            
+        else:
+            # Create figure
+            fig, ax = plt.subplots(nrows=3)
+            ax_p, ax_d, ax_m = ax
+            # Initial line
+            line_prod = ax_p.plot(x_vals, production[:, 0], ".", color="rebeccapurple")[0]
+            line_debt = ax_d.plot(x_vals, debt[:, 0], "x", color="firebrick")[0]
+            line_money = ax_m.plot(x_vals, money[:, 0], "*", color="black")[0]
+            
+            # Axes setup
+            # Legend
+            legend_elements = [Line2D([], [], color="rebeccapurple", marker=".", ls="none", label="Production"),
+                           Line2D([], [], color="firebrick", marker="x", ls="none",label="Debt"),
+                           Line2D([], [], color="black", marker="*", ls="none", label="Money"),]
+            ax_p.legend(handles=legend_elements, ncols=3, bbox_to_anchor=(0.5, 0.9), loc="lower center")
+            # Scale
+            ax_p.set_yscale(scale)
+            ax_d.set_yscale(scale)
+            ax_m.set_yscale(scale)
+            # Axis set
+            ax_p.set(xlim=(0, N), ylim=(np.min(production), np.max(production)), ylabel="Production value")
+            ax_d.set(xlim=(0, N), ylim=(np.min(debt), np.max(debt)), ylabel="Debt")
+            ax_m.set(xlim=(0, N), ylim=(np.min(money), np.max(money)), xlabel="Company Number", ylabel="Money")
+            # Grid
+            ax_p.grid()
+            ax_d.grid()
+            ax_m.grid()
+            # Ticks
+            ax_p.set_xticks(ticks=x_vals, fontsize=5)
+            ax_d.set_xticks(ticks=x_vals, fontsize=5)
+            ax_m.set_xticks(ticks=x_vals, fontsize=5)
+            # Parameters text
+            self._add_parameters_text(ax_p)
+
+        
+        # Line update function
+        def animate(i):
+            line_prod.set_ydata(production[:, i])
+            line_debt.set_ydata(debt[:, i])
+            line_money.set_ydata(money[:, i])
+            fig.suptitle(f"Time = {i}")
+        
+        # Create animation and save it
+        anim = animation.FuncAnimation(fig, animate, interval=1, frames=self.time_steps)
+        
+        time_create_anim = time()  # Record time
+        animation_name = self.dir_path_image + "value_animation_" + f"{scale}_same_row{on_same_row}_" + self.filename + ".mp4"
+        anim.save(animation_name, fps=30)
+        
+        # Display times
+        time_save_anim = time()
+        print("Time creating animation: \t", time_create_anim - time_i)
+        print("Time saving animation: \t", time_save_anim - time_create_anim)
+        
 
 if __name__ == "__main__":      
-    run_well_mixed = False
-    run_1d = True
+    run_well_mixed = True
+    run_1d = False
     
     
     # Visualize Well Mixed
@@ -193,20 +329,37 @@ if __name__ == "__main__":
         filename = filename_parameter_addon
         visualize = DebtDeflationVisualization(filename)
         
+        # Single companies and mean
         visualize.plot_companies(N_plot=4)
         visualize.plot_means()
         
+        # Size distributions
+        # visualize.final_time_size_dist()
         # visualize.animate_size_distribution()
-        visualize.final_time_size_dist()
 
+        # Values of all companies along x-axis
+        # visualize.final_time_values()
+        # visualize.animate_values
+        
 
     # Visualize 1d
     if run_1d:    
         visualize_1d = DebtDeflationVisualization(filename_parameter_addon_1d)
         
-        # visualize_1d.plot_companies(N_plot=4)
-        # visualize_1d.plot_means()
+        # Single companies and company mean
+        visualize_1d.plot_companies(N_plot=4)
+        visualize_1d.plot_means()
     
+        # Size distrubtions
+        visualize_1d.final_time_size_dist()
         # visualize_1d.animate_size_distribution()
-        # visualize_1d.final_time_size_dist()
+        
+        # Values of all companies along x-axis
         visualize_1d.final_time_values()
+        # visualize_1d.animate_values(scale="log", on_same_row=False)
+        
+        
+        
+        """
+        1d k naboer bred
+        """
