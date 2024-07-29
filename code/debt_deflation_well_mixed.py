@@ -27,7 +27,7 @@ class DebtDeflation():
         self.dir_path = "code/"
         self.dir_path_output = self.dir_path + "output/"
         self.dir_path_image = self.dir_path + "image/"
-        self.file_parameter_addon = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.r}_Efficiency{self.alpha}_BuyFraction{self.buy_fraction}_EquilibriumStep{self.epsilon}"
+        self.file_parameter_addon = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.r}_Efficiency{self.alpha}_BuyFraction{self.buy_fraction}_EquilibriumStep{self.epsilon}_wellmixed"
 
 
     def _initial_market(self) -> None:
@@ -102,7 +102,7 @@ class DebtDeflation():
         self.production[bankrupt_idx] = 1
 
 
-    def _inflation(self, epsilon):
+    def _inflation(self):
         """Update the money according to the inflation rule:
         mi <- mi + epsilon * (P / M - 1) * mi
 
@@ -114,7 +114,7 @@ class DebtDeflation():
         demand = self.money.sum()
         distance_to_equilibrium = (suply / demand - 1) * self.money
         # Perform the update
-        self.money = self.money + epsilon * distance_to_equilibrium
+        self.money = self.money + self.epsilon * distance_to_equilibrium
 
 
     def _data_to_file(self) -> None:
@@ -150,7 +150,7 @@ class DebtDeflation():
             if self.include_debt:
                 self._pay_rent()
                 self._bankruptcy_check()
-            self._inflation(self.epsilon)
+            self._inflation()
             # Store values
             self.production_hist[:, i] = self.production
             self.debt_hist[:, i] = self.debt
@@ -162,7 +162,7 @@ class DebtDeflation():
 
 # Parameters
 N_agents = 100
-time_steps = 1000
+time_steps = 10000
 interest = 1
 money_to_production_efficiency = 0.05  # alpha, growth exponent
 buy_fraction = 1  # sigma
