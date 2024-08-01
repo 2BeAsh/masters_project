@@ -99,7 +99,7 @@ class DebtDeflation_1d(DebtDeflation):
 
 
 # Parameters unique to 1d i.e. not used in well mixed
-neighbour_width = 2
+neighbour_width = 1
 
 
 # Create instance of class 
