@@ -11,7 +11,7 @@ from debt_deflation_1d import filename_parameter_addon_1d
 
 
 class DebtDeflationVisualization():
-    def __init__(self, filename):
+    def __init__(self, filename, show_plots=False):
         # Local paths for saving files.
         self.filename = filename
         self.dir_path = "code/"
@@ -22,6 +22,9 @@ class DebtDeflationVisualization():
         image_sufix = filename_split[-1] + "/"
         self.dir_path_image = self.dir_path + "image/" + image_sufix
 
+        # If want to display/show plots or not
+        self.show_plots = show_plots
+        
 
     def _display_parameters(self):
         # Split at underscores "_"
@@ -76,7 +79,7 @@ class DebtDeflationVisualization():
         # Save figure
         figname = self.dir_path_image + f"means_" + self.filename + ".png"
         plt.savefig(figname)
-        plt.show()
+        if self.show_plots: plt.show()
 
 
     def plot_companies(self, N_plot):
@@ -108,7 +111,7 @@ class DebtDeflationVisualization():
         # Save figure
         figname = self.dir_path_image + f"single_companies_" + self.filename + ".png"
         plt.savefig(figname)
-        plt.show()
+        if self.show_plots: plt.show()
 
 
     def final_time_size_dist(self):
@@ -127,8 +130,7 @@ class DebtDeflationVisualization():
         # Save figure
         figname = self.dir_path_image + f"final_time_dist_" + self.filename + ".png"
         plt.savefig(figname)
-        
-        plt.show()
+        if self.show_plots: plt.show()
         
 
     def final_time_values(self):
@@ -182,8 +184,8 @@ class DebtDeflationVisualization():
         # Save figure
         figname = self.dir_path_image + f"final_time_values" + self.filename + ".png"
         plt.savefig(figname)
-        
-        plt.show()
+        if self.show_plots: plt.show()
+
         
 
     def animate_size_distribution(self):
@@ -230,7 +232,7 @@ class DebtDeflationVisualization():
         print("Time saving animation: \t", time_save_ani - time_create_ani)
         
         
-    def animate_values(self, scale="linear", on_same_row=True):
+    def animate_values(self, scale="log", on_same_row=False):
         # Store time at initial time to later find the time taken for different parts of the animation
         time_i = time()
         
@@ -319,32 +321,33 @@ class DebtDeflationVisualization():
         
 
 if __name__ == "__main__":      
-    run_well_mixed = False
-    run_1d = True
+    run_well_mixed = True
+    run_1d = True 
+    show_plots = False
     
     
     # Visualize Well Mixed
     if run_well_mixed:
         #filename = "Steps1000_Companies100_Interest1_Efficiency0.05_LoanProb0.0_BuyFraction1_EquilibriumStep0.01"
         filename = filename_parameter_addon
-        visualize = DebtDeflationVisualization(filename)
+        visualize = DebtDeflationVisualization(filename, show_plots)
         
         # Single companies and mean
         visualize.plot_companies(N_plot=4)
         visualize.plot_means()
         
         # Size distributions
-        # visualize.final_time_size_dist()
-        # visualize.animate_size_distribution()
+        visualize.final_time_size_dist()
+        visualize.animate_size_distribution()
 
         # Values of all companies along x-axis
-        # visualize.final_time_values()
-        # visualize.animate_values
+        visualize.final_time_values()
+        visualize.animate_values()
         
 
     # Visualize 1d
     if run_1d:    
-        visualize_1d = DebtDeflationVisualization(filename_parameter_addon_1d)
+        visualize_1d = DebtDeflationVisualization(filename_parameter_addon_1d, show_plots)
         
         # Single companies and company mean
         visualize_1d.plot_companies(N_plot=4)
@@ -352,9 +355,10 @@ if __name__ == "__main__":
     
         # Size distrubtions
         visualize_1d.final_time_size_dist()
-        # visualize_1d.animate_size_distribution()
+        visualize_1d.animate_size_distribution()
         
         # Values of all companies along x-axis
         visualize_1d.final_time_values()
         visualize_1d.animate_values(scale="log", on_same_row=False)
-        
+    
+    if not show_plots: print("Finished plots!")
