@@ -51,8 +51,9 @@ class DebtDeflation():
         # The buyer cannot take a loan larger than its company size
         if self.money[buyer_idx] < self.production[seller_idx] and self.include_debt:
             # Calculate loan size
-            money_production_difference = self.production[seller_idx] - self.money[buyer_idx]
-            loan_size = np.min([money_production_difference, self.production[buyer_idx]])
+            production_money_difference = self.production[seller_idx] - self.money[buyer_idx]
+            production_debt_difference = self.production[buyer_idx] - self.r * self.debt[buyer_idx]  # Production is ideal money gained, r * d is money lost. 
+            loan_size = np.min([production_money_difference, production_debt_difference])
             # Update values
             self.money[buyer_idx] += loan_size
             self.debt[buyer_idx] += loan_size
@@ -97,10 +98,17 @@ class DebtDeflation():
     
     
     def _bankruptcy_check(self):
-        """Bankrupt if alpha * p + m < d. If goes bankrupt, start a new company in its place with initial values.
-        Intuition is that when m=0, you must have high enough production to pay off the debt in one transaction i.e. alpha * p > d"""
+        """Bankrupt if p + m < d. If goes bankrupt, start a new company in its place with initial values.
+        Intuition is that when m=0, you must have high enough production to pay off the debt in one transaction i.e. p > d"""
         # Find all companies who have gone bankrupt
-        bankrupt_idx = np.where(self.alpha * self.production + self.money < self.debt)
+        bankrupt_idx = np.where(self.production + self.money < self.debt * self.r)
+        
+        # Print one of the bankrupt comapny's values
+        idx1 = bankrupt_idx[0]
+        print(f"Production: \n{self.production[idx1]}, \nMoney: \n{self.money[idx1]}, \nDebt: \n{self.debt[idx1]}")
+        print("")
+        print("")
+        
         # Set their values to the initial values
         self.money[bankrupt_idx] = 1
         self.debt[bankrupt_idx] = 0
