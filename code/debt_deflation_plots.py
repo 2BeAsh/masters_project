@@ -42,13 +42,28 @@ class DebtDeflationVisualization():
         axis.text(x=x, y=y, s=display_parameters_str, transform=axis.transAxes, horizontalalignment='left', verticalalignment='center', fontsize=9)
         
 
-    def _load_data(self) -> None:
-        data_all = np.load(self.dir_path_output + self.filename + ".npy")
-        production = data_all[:, :, 0]
-        debt = data_all[:, :, 1]
-        money = data_all[:, :, 2] 
-        self.time_steps = np.shape(production)[1]
-        return production, debt, money
+    def _load_data(self, parameter_change=False) -> tuple:
+        if parameter_change:
+            filename = self.dir_path_output + self.filename + "_parameter_change" + ".npy"
+            data_all = np.load(filename)
+            production = data_all[:, :, 0]
+            debt = data_all[:, :, 1]
+            money = data_all[:, :, 2] 
+            
+            r_vals = data_all[:, :, 3]
+            r_vals_true = r_vals[:, 0]
+            
+            self.time_steps = np.shape(production)[1]
+            return production, debt, money, r_vals_true
+        
+        else:
+            filename = self.dir_path_output + self.filename + ".npy"
+            data_all = np.load(filename)
+            production = data_all[:, :, 0]
+            debt = data_all[:, :, 1]
+            money = data_all[:, :, 2] 
+            self.time_steps = np.shape(production)[1]
+            return production, debt, money
     
     
     def plot_means(self):
@@ -187,7 +202,6 @@ class DebtDeflationVisualization():
         plt.savefig(figname)
         if self.show_plots: plt.show()
 
-        
 
     def animate_size_distribution(self):
         time_i = time()
@@ -320,10 +334,67 @@ class DebtDeflationVisualization():
         print("Time creating animation: \t", time_create_anim - time_i)
         print("Time saving animation: \t", time_save_anim - time_create_anim)
         
+        
+    def animate_mean_under_parameter_change(self):
+        # Save time for later speed calculations
+        time_i = time()
+
+        # Get the data
+        production_means, debt_means, money_means, r_vals = self._load_data(parameter_change=True)        
+        time_values = np.arange(0, self.time_steps)
+        
+        fig, ax = plt.subplots()
+
+        # Axis setup
+        # Get limits
+        ymin = np.min([production_means, debt_means, money_means])
+        ymax = np.max([production_means, debt_means, money_means])
+        
+        ax.set(xlabel="Time", ylabel="$", title="Mean values", 
+               xlim=(time_values[0], time_values[-1]), ylim=(ymin, ymax))
+        
+        # Legend
+        legend_elements = [Line2D([], [], color="rebeccapurple", label="Production"),
+                           Line2D([], [], color="firebrick", label="Debt"),
+                           Line2D([], [], color="black", label="Money"),]
+        ax.legend(handles=legend_elements, ncols=3, bbox_to_anchor=(0.5, 0.9), loc="lower center")
+
+        # Display parameters
+        # self._add_parameters_text(ax)
+
+
+        # Create initial lines
+        line_p = ax.plot(time_values, production_means[0, :])[0]
+        line_d = ax.plot(time_values, debt_means[0, :])[0]
+        line_m = ax.plot(time_values, money_means[0, :], "--")[0]
+        
+        # Update function
+        def animate(i):
+            line_p.set_ydata(production_means[i, :])
+            line_d.set_ydata(debt_means[i, :])
+            line_m.set_ydata(money_means[i, :])
+            
+            # Title. r value, time_steps and repeats
+            r_val_i = r_vals[i]
+            ax.set_title(label=f"r = {r_val_i}, steps = {i}")
+
+        # Create animation and save it
+        anim = animation.FuncAnimation(fig, animate, interval=1, frames=np.shape(production_means)[0])
+        
+        time_create_anim = time()  # Record time
+        animation_name = self.dir_path_image + "parameter_change_animation_" + self.filename + ".mp4"
+        anim.save(animation_name, fps=30)
+        
+        # Display times
+        time_save_anim = time()
+        print("Parameter change animation:")
+        print("Time creating animation: \t", time_create_anim - time_i)
+        print("Time saving animation: \t", time_save_anim - time_create_anim)
+            
 
 if __name__ == "__main__":      
     run_well_mixed = True
-    run_1d = True
+    run_1d = False
     show_plots = False
     run_animations = True
     
@@ -335,16 +406,18 @@ if __name__ == "__main__":
         visualize = DebtDeflationVisualization(filename, show_plots)
         
         # Single companies and mean
-        visualize.plot_companies(N_plot=4)
-        visualize.plot_means()
+        # visualize.plot_companies(N_plot=4)
+        # visualize.plot_means()
+        if run_animations: visualize.animate_mean_under_parameter_change()
         
-        # Size distributions
-        visualize.final_time_size_dist()
-        if run_animations: visualize.animate_size_distribution()
+        # # Size distributions
+        # visualize.final_time_size_dist()
+        # if run_animations: visualize.animate_size_distribution()
 
-        # Values of all companies along x-axis
-        visualize.final_time_values(scale="linear")
-        if run_animations: visualize.animate_values()
+        # # Values of all companies along x-axis
+        # visualize.final_time_values(scale="linear")
+        # if run_animations: visualize.animate_values()
+        
         
 
     # Visualize 1d

@@ -1,6 +1,6 @@
 import numpy as np
 from tqdm import tqdm
-from debt_deflation_master import DebtDeflation, N_agents, time_steps, interest, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt
+from debt_deflation_master import DebtDeflation, N_agents, time_steps, interest, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
 
 
 class DebtDeflationWellMixed(DebtDeflation):
@@ -60,6 +60,10 @@ class DebtDeflationWellMixed(DebtDeflation):
         
     def run_simulation(self):
         self.simulation(self._buyer_seller_idx_money_scaling)
+        
+        
+    def run_parameter_change_simulation(self, r_vals, N_repeats):
+        self.parameter_change_simulation(self._buyer_seller_idx_money_scaling, r_vals, N_repeats)
     
 
 # Parameters
@@ -74,4 +78,6 @@ debtdeflation_wellmixed = DebtDeflationWellMixed(number_of_companies=N_agents,
 filename_parameter_addon = debtdeflation_wellmixed.file_parameter_addon
 
 if __name__ == "__main__":
-    debtdeflation_wellmixed.run_simulation()
+    # debtdeflation_wellmixed.run_simulation()
+    debtdeflation_wellmixed.run_parameter_change_simulation(interest_values, N_repeats)
+    

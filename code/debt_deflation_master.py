@@ -106,9 +106,8 @@ class DebtDeflation():
         suply = self.production.sum()
         demand = self.money.sum()
         distance_to_equilibrium_factor = (suply / demand - 1)
-        # Perform the update on money and debt
+        # Perform the update on money
         self.money += self.epsilon * distance_to_equilibrium_factor * self.money
-        # self.debt += self.epsilon * distance_to_equilibrium_factor * self.debt
 
 
     def _data_to_file(self) -> None:
@@ -159,6 +158,57 @@ class DebtDeflation():
         # Save data to file
         self._data_to_file()
     
+    
+    def parameter_change_simulation(self, func_buyer_seller_idx, r_vals: np.ndarray, N_repeats: int) -> None:
+        """Run simulation for different interest values r, each value is run N_repeats times. Store in file.
+
+        Args:
+            func_buyer_seller_idx (function): Choice of buyer and seller idx e.g. well mixed or 1d neighbours.
+            r_vals (ndarraylike): Interest values.
+            N_repeats (int): Times each r value is repeated.
+        """
+        # Store original interest value so can change back afterwards
+        r_original = self.r
+        
+        # Empty lists for data storage
+        data_production = np.empty((len(r_vals) * N_repeats, self.time_steps))
+        data_debt = np.empty_like(data_production)
+        data_money = np.empty_like(data_production)
+        
+        # Get the data
+        idx_counter = 0
+        for r in tqdm(r_vals):
+            self.r = r  # Update the class' interest value
+            for _ in range(N_repeats):
+                # Generate data, take mean over companies, then store in data arrays
+                self.simulation(func_buyer_seller_idx)
+                production_mean = np.mean(self.production_hist, axis=0)
+                debt_mean = np.mean(self.debt_hist, axis=0)
+                money_mean = np.mean(self.money_hist, axis=0)
+                
+                data_production[idx_counter, :] = production_mean
+                data_debt[idx_counter, :] = debt_mean
+                data_money[idx_counter, :] = money_mean
+                
+                idx_counter += 1
+
+        # Save data to file. Combine data into one array, then save.
+        # Want to save r_vals as well, so expand r_vals to fit in
+        r_vals_save = np.empty_like(data_production)
+        r_vals_save[:, 0] = np.repeat(r_vals, N_repeats)
+        
+        all_data = np.empty((len(data_production), self.time_steps, 4))
+        all_data[:, :, 0] = np.array(data_production)
+        all_data[:, :, 1] = np.array(data_debt)
+        all_data[:, :, 2] = np.array(data_money)
+        all_data[:, :, 3] = r_vals_save
+
+        filename = self.dir_path_output + self.file_parameter_addon + "_parameter_change" + ".npy"
+        np.save(filename, arr=all_data)
+
+        # Restore orignal interest value
+        self.r = r_original
+        
 
 # Parameters
 N_agents = 100
@@ -168,3 +218,6 @@ money_to_production_efficiency = 0.05  # alpha, growth exponent
 buy_fraction = 1  # sigma
 equilibrium_distance_fraction = 0.01  # epsilon
 include_debt = True
+
+interest_values = np.array([0, 0.1, 0.25, 0.5, 0.75, 1, 1.5, 5])
+N_repeats = 10
