@@ -133,7 +133,7 @@ class DebtDeflationVisualization():
         if self.show_plots: plt.show()
         
 
-    def final_time_values(self):
+    def final_time_values(self, scale="log"):
         production, debt, money = self._load_data()
         production_final = production[:, -1]
         debt_final = debt[:, -1]
@@ -141,9 +141,10 @@ class DebtDeflationVisualization():
         x_vals = np.arange(len(money_final))
 
         # Since using log, cannot have <= 0 values
-        y_min = 1e-3
-        money_final = np.maximum(money_final, y_min)
-        debt_final = np.maximum(debt_final, y_min)
+        if scale == "log":
+            y_min = 1e-3
+            money_final = np.maximum(money_final, y_min)
+            debt_final = np.maximum(debt_final, y_min)
 
         # Create figure
         fig, ax = plt.subplots(nrows=3)
@@ -161,9 +162,9 @@ class DebtDeflationVisualization():
                         Line2D([], [], color="black", marker="*", ls="none", label="Money"),]
         ax_p.legend(handles=legend_elements, ncols=3, bbox_to_anchor=(0.5, 0.99), loc="lower center")
         # Scale
-        ax_p.set_yscale("log")
-        ax_d.set_yscale("log")
-        ax_m.set_yscale("log")
+        ax_p.set_yscale(scale)
+        ax_d.set_yscale(scale)
+        ax_m.set_yscale(scale)
         # Axis set
         N = np.shape(production)[0]
         ax_p.set(xlim=(0, N), ylim=(np.min(production_final), np.max(production_final)), ylabel="Production value")
@@ -322,8 +323,9 @@ class DebtDeflationVisualization():
 
 if __name__ == "__main__":      
     run_well_mixed = True
-    run_1d = True 
+    run_1d = True
     show_plots = False
+    run_animations = True
     
     
     # Visualize Well Mixed
@@ -338,11 +340,11 @@ if __name__ == "__main__":
         
         # Size distributions
         visualize.final_time_size_dist()
-        visualize.animate_size_distribution()
+        if run_animations: visualize.animate_size_distribution()
 
         # Values of all companies along x-axis
-        visualize.final_time_values()
-        visualize.animate_values()
+        visualize.final_time_values(scale="linear")
+        if run_animations: visualize.animate_values()
         
 
     # Visualize 1d
@@ -355,10 +357,10 @@ if __name__ == "__main__":
     
         # Size distrubtions
         visualize_1d.final_time_size_dist()
-        visualize_1d.animate_size_distribution()
+        if run_animations: visualize_1d.animate_size_distribution()
         
         # Values of all companies along x-axis
         visualize_1d.final_time_values()
-        visualize_1d.animate_values(scale="log", on_same_row=False)
+        if run_animations: visualize_1d.animate_values(scale="log", on_same_row=False)
     
     if not show_plots: print("Finished plots!")
