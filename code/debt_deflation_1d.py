@@ -1,9 +1,9 @@
 import numpy as np
 from tqdm import tqdm
-from debt_deflation_well_mixed import DebtDeflation, N_agents, time_steps, interest, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction
+from debt_deflation_master import DebtDeflation, N_agents, time_steps, interest, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt
 
 
-class DebtDeflation_1d(DebtDeflation):
+class DebtDeflation1d(DebtDeflation):
     def __init__(self, number_of_companies: int, money_to_production_efficiency: float, 
                  interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, 
                  neighbour_width: int, include_debt: bool, time_steps: int):
@@ -18,7 +18,7 @@ class DebtDeflation_1d(DebtDeflation):
             equilibrium_distance_fraction (float): _description_
             time_steps (int): _description_
         """
-        # Lots of overlap with well mixed
+        # Get master methods
         super().__init__(number_of_companies, money_to_production_efficiency, interest_rate, buy_fraction, equilibrium_distance_fraction, include_debt, time_steps)
         
         # New parameters
@@ -26,7 +26,7 @@ class DebtDeflation_1d(DebtDeflation):
         
         # Updated image path
         self.dir_path_image = self.dir_path + "image/" + "1d/"
-        self.file_parameter_addon = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.r}_Efficiency{self.alpha}_BuyFraction{self.buy_fraction}_EquilibriumStep{self.epsilon}_nborwidth{self.nbor}_1D"
+        self.file_parameter_addon = self.file_parameter_addon_base +  f"_nborwidth{self.nbor}_1D"
     
     
     def _seller_idx(self, buyer_idx) -> int:
@@ -65,52 +65,22 @@ class DebtDeflation_1d(DebtDeflation):
         return buyer_idx, seller_idx
 
 
-    def simulation(self) -> None:
-        # Initialize market
-        self._initial_market()
-        # History and its first value
-        self.production_hist = np.zeros((self.N, self.time_steps))
-        self.debt_hist = np.zeros_like(self.production_hist)
-        self.money_hist = np.zeros_like(self.production_hist)
-        self.production_hist[:, 0] = self.production
-        self.debt_hist[:, 0] = self.debt
-        self.money_hist[:, 0] = self.money
-        
-        # Time evolution
-        for i in tqdm(range(1, self.time_steps)):
-            # Make N transactions
-            for _ in range(self.N):
-                # Pick buyer and seller
-                # buyer_idx, seller_idx = self._buyer_seller_idx_money_scaling_1d()
-                buyer_idx, seller_idx = self._buyer_seller_idx_uniform_1d()
-                self._step(buyer_idx, seller_idx)
-            # Pay rent and check for bankruptcy
-            if self.include_debt:
-                self._pay_rent()
-                self._bankruptcy_check()
-            self._inflation()
-            # Store values
-            self.production_hist[:, i] = self.production
-            self.debt_hist[:, i] = self.debt
-            self.money_hist[:, i] = self.money
-        
-        # Save data to file
-        self._data_to_file()
-
+    def run_simulation(self):
+        self.simulation(self._buyer_seller_idx_uniform_1d)
 
 # Parameters unique to 1d i.e. not used in well mixed
 neighbour_width = 1
 
 
 # Create instance of class 
-debtdeflation_1d = DebtDeflation_1d(number_of_companies=N_agents, 
+debtdeflation_1d = DebtDeflation1d(number_of_companies=N_agents, 
                             money_to_production_efficiency=money_to_production_efficiency, 
                             interest_rate=interest, 
                             buy_fraction=buy_fraction, 
                             equilibrium_distance_fraction=equilibrium_distance_fraction, 
                             neighbour_width=neighbour_width,
                             time_steps=time_steps,
-                            include_debt=True)
+                            include_debt=include_debt)
 
 # Get filename path for plotting
 filename_parameter_addon_1d = debtdeflation_1d.file_parameter_addon
@@ -118,4 +88,4 @@ filename_parameter_addon_1d = debtdeflation_1d.file_parameter_addon
 
 if __name__ == "__main__":
     # Run the simulation
-    debtdeflation_1d.simulation()
+    debtdeflation_1d.run_simulation()
