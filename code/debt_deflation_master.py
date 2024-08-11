@@ -219,5 +219,5 @@ buy_fraction = 1  # sigma
 equilibrium_distance_fraction = 0.01  # epsilon
 include_debt = True
 
-interest_values = np.array([0, 0.1, 0.25, 0.5, 0.75, 1, 1.5, 5])
+interest_values = np.array([0, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.5, 5])
 N_repeats = 10

@@ -1,6 +1,6 @@
 import numpy as np
 from tqdm import tqdm
-from debt_deflation_master import DebtDeflation, N_agents, time_steps, interest, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt
+from debt_deflation_master import DebtDeflation, N_agents, time_steps, interest, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
 
 
 class DebtDeflation1d(DebtDeflation):
@@ -67,6 +67,11 @@ class DebtDeflation1d(DebtDeflation):
 
     def run_simulation(self):
         self.simulation(self._buyer_seller_idx_uniform_1d)
+        
+        
+    def run_parameter_change_simulation(self, r_vals, N_repeats):
+        self.parameter_change_simulation(self._buyer_seller_idx_uniform_1d, r_vals, N_repeats)
+
 
 # Parameters unique to 1d i.e. not used in well mixed
 neighbour_width = 1
@@ -89,3 +94,4 @@ filename_parameter_addon_1d = debtdeflation_1d.file_parameter_addon
 if __name__ == "__main__":
     # Run the simulation
     debtdeflation_1d.run_simulation()
+    debtdeflation_1d.run_parameter_change_simulation(interest_values, N_repeats)

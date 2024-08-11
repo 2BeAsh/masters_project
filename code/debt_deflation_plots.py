@@ -342,16 +342,19 @@ class DebtDeflationVisualization():
         # Get the data
         production_means, debt_means, money_means, r_vals = self._load_data(parameter_change=True)        
         time_values = np.arange(0, self.time_steps)
-        
-        fig, ax = plt.subplots()
 
-        # Axis setup
+        # Get the number of repeats by dividing total array size with unique array size
+        N_repeats = r_vals.size // np.unique(r_vals).size
+        
+        # Create figure and setup axis        
+        fig, ax = plt.subplots()
         # Get limits
-        ymin = np.min([production_means, debt_means, money_means])
-        ymax = np.max([production_means, debt_means, money_means])
+        # ymin = np.min([production_means, debt_means, money_means])
+        # ymax = np.max([production_means, debt_means, money_means])
         
         ax.set(xlabel="Time", ylabel="$", title="Mean values", 
-               xlim=(time_values[0], time_values[-1]), ylim=(ymin, ymax))
+               xlim=(time_values[0], time_values[-1]), )
+            #    ylim=(ymin, ymax))
         
         # Legend
         legend_elements = [Line2D([], [], color="rebeccapurple", label="Production"),
@@ -374,16 +377,23 @@ class DebtDeflationVisualization():
             line_d.set_ydata(debt_means[i, :])
             line_m.set_ydata(money_means[i, :])
             
-            # Title. r value, time_steps and repeats
+            # Title. r value, time_steps (and repeats?)
             r_val_i = r_vals[i]
-            ax.set_title(label=f"r = {r_val_i}, steps = {i}")
+            ax.set_title(label=f"r = {r_val_i}, steps = {i}, {i % N_repeats}/{N_repeats}")
+            
+            # y limits. Only update ylim when new r value
+            if i % N_repeats == 0:
+                ymin = np.min([production_means[i, :], debt_means[i, :], money_means[i, :]])
+                ymax = np.max([production_means[i, :], debt_means[i, :], money_means[i, :]])
+                ax.set_ylim(ymin, ymax)
+            ax.set_xlim(time_values[0], time_values[-1])
 
         # Create animation and save it
         anim = animation.FuncAnimation(fig, animate, interval=1, frames=np.shape(production_means)[0])
         
         time_create_anim = time()  # Record time
         animation_name = self.dir_path_image + "parameter_change_animation_" + self.filename + ".mp4"
-        anim.save(animation_name, fps=30)
+        anim.save(animation_name, fps=2)
         
         # Display times
         time_save_anim = time()
