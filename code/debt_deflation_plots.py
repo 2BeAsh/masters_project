@@ -383,8 +383,9 @@ class DebtDeflationVisualization():
             
             # y limits. Only update ylim when new r value
             if i % N_repeats == 0:
-                ymin = np.min([production_means[i, :], debt_means[i, :], money_means[i, :]])
-                ymax = np.max([production_means[i, :], debt_means[i, :], money_means[i, :]])
+                # Find min and max y value of the next N_repeats values
+                ymin = np.min([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :], money_means[i: i + N_repeats, :]])
+                ymax = np.max([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :], money_means[i: i + N_repeats, :]])
                 ax.set_ylim(ymin, ymax)
             ax.set_xlim(time_values[0], time_values[-1])
 
