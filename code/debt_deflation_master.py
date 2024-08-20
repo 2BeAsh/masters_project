@@ -225,12 +225,12 @@ class DebtDeflation():
 
 # Parameters
 N_agents = 100
-time_steps = 10
-real_interest_rate = 0.05  # gamma
+time_steps = 750
+real_interest_rate = 0.1  # gamma
 money_to_production_efficiency = 0.05  # alpha, growth exponent
-buy_fraction = 1  # sigma
 equilibrium_distance_fraction = 0.01  # epsilon
 include_debt = True
+buy_fraction = 1  # sigma
 
 # For parameter_change_simulation
 interest_values = np.array([0.01, 0.025, 0.05, 0.1, 0.15, 0.2])

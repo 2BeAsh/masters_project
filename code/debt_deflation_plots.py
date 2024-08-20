@@ -399,17 +399,15 @@ class DebtDeflationVisualization():
             
 
 if __name__ == "__main__":      
-    run_well_mixed = True
-    run_1d = False
-    show_plots = True
+    run_well_mixed = False
+    run_1d = True
+    show_plots = False
     run_animations = True
     
     
     # Visualize Well Mixed
     if run_well_mixed:
-        #filename = "Steps1000_Companies100_Interest1_Efficiency0.05_LoanProb0.0_BuyFraction1_EquilibriumStep0.01"
-        filename = filename_parameter_addon
-        visualize = DebtDeflationVisualization(filename, show_plots)
+        visualize = DebtDeflationVisualization(filename_parameter_addon, show_plots)
         
         # Single companies and mean
         visualize.plot_companies(N_plot=4)
@@ -418,7 +416,7 @@ if __name__ == "__main__":
         
         # # Size distributions
         visualize.final_time_size_dist()
-        # if run_animations: visualize.animate_size_distribution()
+        if run_animations: visualize.animate_size_distribution()
 
         # # Values of all companies along x-axis
         visualize.final_time_values(scale="log")
@@ -432,10 +430,11 @@ if __name__ == "__main__":
         # Single companies and company mean
         visualize_1d.plot_companies(N_plot=4)
         visualize_1d.plot_means()
+        # if run_animations: visualize_1d.animate_mean_under_parameter_change()
     
         # Size distrubtions
         visualize_1d.final_time_size_dist()
-        if run_animations: visualize_1d.animate_size_distribution()
+        # if run_animations: visualize_1d.animate_size_distribution()
         
         # Values of all companies along x-axis
         visualize_1d.final_time_values()
