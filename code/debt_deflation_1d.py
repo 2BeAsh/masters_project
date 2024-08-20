@@ -1,11 +1,11 @@
 import numpy as np
 from tqdm import tqdm
-from debt_deflation_master import DebtDeflation, N_agents, time_steps, interest, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
+from debt_deflation_master import DebtDeflation, N_agents, time_steps, real_interest_rate, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
 
 
 class DebtDeflation1d(DebtDeflation):
     def __init__(self, number_of_companies: int, money_to_production_efficiency: float, 
-                 interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, 
+                 real_interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, 
                  neighbour_width: int, include_debt: bool, time_steps: int):
         """Initializer
 
@@ -19,7 +19,7 @@ class DebtDeflation1d(DebtDeflation):
             time_steps (int): _description_
         """
         # Get master methods
-        super().__init__(number_of_companies, money_to_production_efficiency, interest_rate, buy_fraction, equilibrium_distance_fraction, include_debt, time_steps)
+        super().__init__(number_of_companies, money_to_production_efficiency, real_interest_rate, buy_fraction, equilibrium_distance_fraction, include_debt, time_steps)
         
         # New parameters
         self.nbor = neighbour_width
@@ -80,7 +80,7 @@ neighbour_width = 1
 # Create instance of class 
 debtdeflation_1d = DebtDeflation1d(number_of_companies=N_agents, 
                             money_to_production_efficiency=money_to_production_efficiency, 
-                            interest_rate=interest, 
+                            real_interest_rate=real_interest_rate, 
                             buy_fraction=buy_fraction, 
                             equilibrium_distance_fraction=equilibrium_distance_fraction, 
                             neighbour_width=neighbour_width,
@@ -94,4 +94,4 @@ filename_parameter_addon_1d = debtdeflation_1d.file_parameter_addon
 if __name__ == "__main__":
     # Run the simulation
     debtdeflation_1d.run_simulation()
-    debtdeflation_1d.run_parameter_change_simulation(interest_values, N_repeats)
+    # debtdeflation_1d.run_parameter_change_simulation(interest_values, N_repeats)

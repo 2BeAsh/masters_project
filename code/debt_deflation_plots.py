@@ -1,6 +1,5 @@
 import numpy as np
 import general_functions
-from tqdm import tqdm
 from time import time
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -362,10 +361,6 @@ class DebtDeflationVisualization():
                            Line2D([], [], color="black", label="Money"),]
         ax.legend(handles=legend_elements, ncols=3, bbox_to_anchor=(0.5, 0.9), loc="lower center")
 
-        # Display parameters
-        # self._add_parameters_text(ax)
-
-
         # Create initial lines
         line_p = ax.plot(time_values, production_means[0, :])[0]
         line_d = ax.plot(time_values, debt_means[0, :])[0]
@@ -384,8 +379,8 @@ class DebtDeflationVisualization():
             # y limits. Only update ylim when new r value
             if i % N_repeats == 0:
                 # Find min and max y value of the next N_repeats values
-                ymin = np.min([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :], money_means[i: i + N_repeats, :]])
-                ymax = np.max([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :], money_means[i: i + N_repeats, :]])
+                ymin = 0.8 * np.min([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :], money_means[i: i + N_repeats, :]])  # 0.8 factor to reduce impact of outliers
+                ymax = 0.8 * np.max([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :], money_means[i: i + N_repeats, :]])
                 ax.set_ylim(ymin, ymax)
             ax.set_xlim(time_values[0], time_values[-1])
 
@@ -406,7 +401,7 @@ class DebtDeflationVisualization():
 if __name__ == "__main__":      
     run_well_mixed = True
     run_1d = False
-    show_plots = False
+    show_plots = True
     run_animations = True
     
     
@@ -417,18 +412,17 @@ if __name__ == "__main__":
         visualize = DebtDeflationVisualization(filename, show_plots)
         
         # Single companies and mean
-        # visualize.plot_companies(N_plot=4)
-        # visualize.plot_means()
-        if run_animations: visualize.animate_mean_under_parameter_change()
+        visualize.plot_companies(N_plot=4)
+        visualize.plot_means()
+        # if run_animations: visualize.animate_mean_under_parameter_change()
         
         # # Size distributions
-        # visualize.final_time_size_dist()
+        visualize.final_time_size_dist()
         # if run_animations: visualize.animate_size_distribution()
 
         # # Values of all companies along x-axis
-        # visualize.final_time_values(scale="linear")
-        # if run_animations: visualize.animate_values()
-        
+        visualize.final_time_values(scale="log")
+        if run_animations: visualize.animate_values(scale="log")
         
 
     # Visualize 1d

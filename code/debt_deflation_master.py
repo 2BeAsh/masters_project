@@ -3,7 +3,7 @@ from tqdm import tqdm
 
 
 class DebtDeflation():
-    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, include_debt: bool, time_steps: int):
+    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, real_interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, include_debt: bool, time_steps: int):
         """Initializer
 
         Args:
@@ -17,7 +17,7 @@ class DebtDeflation():
         """
         self.N = number_of_companies
         self.alpha = money_to_production_efficiency  # Money to production efficiency
-        self.r = interest_rate  # Interest rate
+        self.real_interest_rate = real_interest_rate  # Interest rate
         self.buy_fraction = buy_fraction  # When doing a transaction, how large a fraction of min(seller production, buyer money) is used.
         self.epsilon = equilibrium_distance_fraction  # In inflation updates, the fraction the system goes toward equilibrlium.
         self.include_debt = include_debt
@@ -27,17 +27,22 @@ class DebtDeflation():
         self.dir_path = "code/"
         self.dir_path_output = self.dir_path + "output/"
         self.dir_path_image = self.dir_path + "image/"
-        self.file_parameter_addon_base = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.r}_Efficiency{self.alpha}_EquilibriumStep{self.epsilon}"
-
+        self.file_parameter_addon_base = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.real_interest_rate}_Efficiency{self.alpha}_EquilibriumStep{self.epsilon}"        
+        
 
     def _initial_market(self) -> None:
         """Initialize market.
         Production = 1, debt = 0, money = 1
         """
+        # Companies
         self.production = np.ones(self.N)
         self.debt = np.zeros(self.N)
         self.money = np.ones(self.N)
-    
+        
+        # Inflation and interest
+        self._inflation()
+        self._nominal_interest_rate()
+        
         
     def _transaction(self, buyer_idx, seller_idx) -> None:
         """First check if the buyer needs to take a loan to match the sellers production, then make transaction and update values
@@ -102,12 +107,19 @@ class DebtDeflation():
         Args:
             epsilon (float): How much of the distance to the equilibrium the step covers.
         """
-        # Find distance to equilibrium
-        suply = self.production.sum()
+        # Find inflation rate
+        supply = self.production.sum()
         demand = self.money.sum()
-        distance_to_equilibrium_factor = (suply / demand - 1)
+        self.inflation_rate = self.epsilon * (supply / demand - 1)
         # Perform the update on money
-        self.money += self.epsilon * distance_to_equilibrium_factor * self.money
+        self.money += self.inflation_rate * self.money
+
+
+    def _nominal_interest_rate(self) -> None:
+        """Update the nominal interest rate r = gamma + pi + gamma * pi,
+        where gamma is the real interest rate and pi is the inflation rate.
+        """
+        self.r = self.real_interest_rate + self.inflation_rate + self.real_interest_rate * self.inflation_rate    
 
 
     def _data_to_file(self) -> None:
@@ -150,6 +162,7 @@ class DebtDeflation():
                 self._pay_interest()
                 self._bankruptcy_check()
             self._inflation()
+            self._nominal_interest_rate()
             # Store values
             self.production_hist[:, i] = self.production
             self.debt_hist[:, i] = self.debt
@@ -168,7 +181,7 @@ class DebtDeflation():
             N_repeats (int): Times each r value is repeated.
         """
         # Store original interest value so can change back afterwards
-        r_original = self.r
+        r_original = self.real_interest_rate
         
         # Empty lists for data storage
         data_production = np.empty((len(r_vals) * N_repeats, self.time_steps))
@@ -178,7 +191,7 @@ class DebtDeflation():
         # Get the data
         idx_counter = 0
         for r in tqdm(r_vals):
-            self.r = r  # Update the class' interest value
+            self.real_interest_rate = r  # Update the class' interest value
             for _ in range(N_repeats):
                 # Generate data, take mean over companies, then store in data arrays
                 self.simulation(func_buyer_seller_idx)
@@ -207,17 +220,18 @@ class DebtDeflation():
         np.save(filename, arr=all_data)
 
         # Restore orignal interest value
-        self.r = r_original
+        self.real_interest_rate = r_original
         
 
 # Parameters
 N_agents = 100
-time_steps = 1000
-interest = 1
+time_steps = 10
+real_interest_rate = 0.05  # gamma
 money_to_production_efficiency = 0.05  # alpha, growth exponent
 buy_fraction = 1  # sigma
 equilibrium_distance_fraction = 0.01  # epsilon
 include_debt = True
 
-interest_values = np.array([0, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.5, 5])
+# For parameter_change_simulation
+interest_values = np.array([0.01, 0.025, 0.05, 0.1, 0.15, 0.2])
 N_repeats = 10

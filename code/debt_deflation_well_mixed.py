@@ -1,10 +1,10 @@
 import numpy as np
 from tqdm import tqdm
-from debt_deflation_master import DebtDeflation, N_agents, time_steps, interest, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
+from debt_deflation_master import DebtDeflation, N_agents, time_steps, real_interest_rate, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
 
 
 class DebtDeflationWellMixed(DebtDeflation):
-    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, include_debt: bool, time_steps: int):
+    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, real_interest_rate: float, buy_fraction: float, equilibrium_distance_fraction: float, include_debt: bool, time_steps: int):
         """Initializer
 
         Args:
@@ -17,7 +17,7 @@ class DebtDeflationWellMixed(DebtDeflation):
             time_steps (int): _description_
         """
         # Get master methods
-        super().__init__(number_of_companies, money_to_production_efficiency, interest_rate, buy_fraction, equilibrium_distance_fraction, include_debt, time_steps)
+        super().__init__(number_of_companies, money_to_production_efficiency, real_interest_rate, buy_fraction, equilibrium_distance_fraction, include_debt, time_steps)
         
         # Local paths for saving files.
         self.dir_path_image = self.dir_path + "image/" + "wellmixed/"
@@ -69,7 +69,7 @@ class DebtDeflationWellMixed(DebtDeflation):
 # Parameters
 debtdeflation_wellmixed = DebtDeflationWellMixed(number_of_companies=N_agents, 
                                 money_to_production_efficiency=money_to_production_efficiency, 
-                                interest_rate=interest, 
+                                real_interest_rate=real_interest_rate, 
                                 buy_fraction=buy_fraction, 
                                 equilibrium_distance_fraction=equilibrium_distance_fraction, 
                                 time_steps=time_steps,
@@ -78,6 +78,6 @@ debtdeflation_wellmixed = DebtDeflationWellMixed(number_of_companies=N_agents,
 filename_parameter_addon = debtdeflation_wellmixed.file_parameter_addon
 
 if __name__ == "__main__":
-    # debtdeflation_wellmixed.run_simulation()
-    debtdeflation_wellmixed.run_parameter_change_simulation(interest_values, N_repeats)
+    debtdeflation_wellmixed.run_simulation()
+    # debtdeflation_wellmixed.run_parameter_change_simulation(interest_values, N_repeats)
     
