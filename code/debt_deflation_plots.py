@@ -330,8 +330,8 @@ class DebtDeflationVisualization():
         
         # Display times
         time_save_anim = time()
-        print("Time creating animation: \t", time_create_anim - time_i)
-        print("Time saving animation: \t", time_save_anim - time_create_anim)
+        print("Time creating animation: \t", (time_create_anim - time_i) / 60, " min")
+        print("Time saving animation: \t", (time_save_anim - time_create_anim) / 60, " min")
         
         
     def animate_mean_under_parameter_change(self):
@@ -394,12 +394,12 @@ class DebtDeflationVisualization():
         # Display times
         time_save_anim = time()
         print("Parameter change animation:")
-        print("Time creating animation: \t", time_create_anim - time_i)
-        print("Time saving animation: \t", time_save_anim - time_create_anim)
+        print("Time creating animation: \t", (time_create_anim - time_i)/60, " min")
+        print("Time saving animation: \t", (time_save_anim - time_create_anim)/60, " min")
             
 
 if __name__ == "__main__":      
-    run_well_mixed = False
+    run_well_mixed = True
     run_1d = True
     show_plots = False
     run_animations = True
@@ -416,7 +416,7 @@ if __name__ == "__main__":
         
         # # Size distributions
         visualize.final_time_size_dist()
-        if run_animations: visualize.animate_size_distribution()
+        # if run_animations: visualize.animate_size_distribution()
 
         # # Values of all companies along x-axis
         visualize.final_time_values(scale="log")
@@ -438,6 +438,8 @@ if __name__ == "__main__":
         
         # Values of all companies along x-axis
         visualize_1d.final_time_values()
-        if run_animations: visualize_1d.animate_values(scale="log", on_same_row=False)
+        if run_animations: visualize_1d.animate_values(scale="log")
     
-    if not show_plots: print("Finished plots!")
+    if not show_plots: 
+        plt.close()
+        print("Finished plots!")
