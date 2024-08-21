@@ -29,6 +29,10 @@ class DebtDeflation():
         self.dir_path_image = self.dir_path + "image/"
         self.file_parameter_addon_base = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.real_interest_rate}_Efficiency{self.alpha}_EquilibriumStep{self.epsilon}"        
         
+        # Initial parameter values
+        self.inflation_rate = 0  # Initially P = M, meaning no inflation
+        self.r = self.real_interest_rate
+        
 
     def _initial_market(self) -> None:
         """Initialize market.
@@ -38,32 +42,42 @@ class DebtDeflation():
         self.production = np.ones(self.N)
         self.debt = np.zeros(self.N)
         self.money = np.ones(self.N)
-        
-        # Inflation and interest
-        self._inflation()
-        self._nominal_interest_rate()
+    
+    
+    def _simple_loan(self, buyer_idx, seller_idx) -> None:
+        # Calculate loan size
+        loan_size = self.production[seller_idx] - self.money[buyer_idx]
+        # Update values
+        self.money[buyer_idx] += loan_size
+        self.debt[buyer_idx] += loan_size
+
+
+    def _smart_loan(self, buyer_idx, seller_idx) -> None:
+        # Calculate loan size
+        production_money_difference = self.production[seller_idx] - self.money[buyer_idx]
+        production_debt_difference = np.max((0.5*self.production[buyer_idx] - self.r * self.debt[buyer_idx], 0))  # Production is ideal money gained, r * d is money lost. Cannot be negative, so max( ... , 0)
+        loan_size = np.min([production_money_difference, production_debt_difference])
+        # Update values
+        self.money[buyer_idx] += loan_size
+        self.debt[buyer_idx] += loan_size
         
         
     def _transaction(self, buyer_idx, seller_idx) -> None:
-        """First check if the buyer needs to take a loan to match the sellers production, then make transaction and update values
+        """First check if the buyer needs to take a loan to match the sellers production, then make transaction and update values accordingly.
 
         Args:
-            buyer_idx (int): _description_
-            seller_idx (int): _description_
+            buyer_idx (int): Index of the buying company
+            seller_idx (int): Index of the selling company
         """
         # If the buyer's money is less than the seller's production, 
         # the buyer takes a loan to try and match the production. 
         # The buyer cannot take a loan larger than its company size
         if self.money[buyer_idx] < self.production[seller_idx] and self.include_debt:
-            # Calculate loan size
-            production_money_difference = self.production[seller_idx] - self.money[buyer_idx]
-            production_debt_difference = np.max((0.5 * self.production[buyer_idx] - self.r * self.debt[buyer_idx], 0))  # Production is ideal money gained, r * d is money lost. Cannot be negative, so max( ... , 0)
-            loan_size = np.min([production_money_difference, production_debt_difference])
-            # Update values
-            self.money[buyer_idx] += loan_size
-            self.debt[buyer_idx] += loan_size
-        
+            self._smart_loan(buyer_idx, seller_idx)
+            # self._simple_loan(buyer_idx, seller_idx)
+            
         amount_bought = self.buy_fraction * np.min([self.production[seller_idx], self.money[buyer_idx]])
+        
         # Update values
         self.money[seller_idx] += amount_bought
         self.money[buyer_idx] -= amount_bought
@@ -162,7 +176,7 @@ class DebtDeflation():
                 self._pay_interest()
                 self._bankruptcy_check()
             self._inflation()
-            self._nominal_interest_rate()
+            # self._nominal_interest_rate()
             # Store values
             self.production_hist[:, i] = self.production
             self.debt_hist[:, i] = self.debt
@@ -226,7 +240,7 @@ class DebtDeflation():
 # Parameters
 N_agents = 100
 time_steps = 750
-real_interest_rate = 0.1  # gamma
+real_interest_rate = 0.05  # gamma
 money_to_production_efficiency = 0.05  # alpha, growth exponent
 equilibrium_distance_fraction = 0.01  # epsilon
 include_debt = True
@@ -235,3 +249,7 @@ buy_fraction = 1  # sigma
 # For parameter_change_simulation
 interest_values = np.array([0.01, 0.025, 0.05, 0.1, 0.15, 0.2])
 N_repeats = 10
+
+
+if __name__ == "__main__":
+    print("You ran the wrong script :)")
