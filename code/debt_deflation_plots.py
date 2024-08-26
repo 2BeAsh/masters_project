@@ -81,7 +81,7 @@ class DebtDeflationVisualization():
         
 
         if scale == "log":
-            if (production_mean < 1).any(): print("Detected production values below 1!")
+            if (production_mean < 1).any(): print("(Plot means) Detected production values below 1!")
             debt_mean = np.maximum(debt_mean, 1e-1)  # Debt can go to zero
             money_mean = np.maximum(money_mean, 1e-1)  # Money can go negative!!!
         
@@ -117,7 +117,7 @@ class DebtDeflationVisualization():
         time_values = np.arange(0, self.time_steps)
 
         if scale == "log":
-            if (production_plot < 1).any(): print("Detected production values below 1!")
+            if (production_plot < 1).any(): print("(Single companies) Detected production values below 1!")
             debt_plot = np.maximum(debt_plot, 1e-1)  # Debt can go to zero
         
         # Plot averages single axis
@@ -227,7 +227,10 @@ class DebtDeflationVisualization():
         ax.axhline(real_interest_rate, ls="dashed", c="grey", label="Real interest rate")
         ax.set(xlabel="Time", ylabel="Inflation rate")
         ax.legend(ncols=2, bbox_to_anchor=(0.5, 0.95), loc="lower center")
-        
+
+        # Display paraemters
+        self._add_parameters_text(ax, x=0.05, y=0.7)
+
         # Save and show
         figname = Path.joinpath(self.dir_path_image, f"inflation_rate" + self.filename + ".png")
         plt.savefig(figname)
@@ -449,13 +452,14 @@ class DebtDeflationVisualization():
 if __name__ == "__main__":      
     run_well_mixed = True
     run_1d = True
-    show_plots = False
+    show_plots = True
     run_animations = False
     
     scale = "log"
     
     # Visualize Well Mixed
     if run_well_mixed:
+        print("Plotting Well Mixed")
         visualize = DebtDeflationVisualization(filename_parameter_addon, show_plots)
         
         # Single companies and mean
@@ -464,19 +468,20 @@ if __name__ == "__main__":
         # if run_animations: visualize.animate_mean_under_parameter_change()
         
         # # Size distributions
-        visualize.final_time_size_dist()
+        # visualize.final_time_size_dist()
         # if run_animations: visualize.animate_size_distribution()
 
         # Inflation rate
         visualize.plot_inflation_rate()
 
         # # Values of all companies along x-axis
-        visualize.final_time_values(scale=scale)
+        # visualize.final_time_values(scale=scale)
         if run_animations: visualize.animate_values(scale=scale)
         
 
     # Visualize 1d
     if run_1d:    
+        print("Plotting 1d")
         visualize_1d = DebtDeflationVisualization(filename_parameter_addon_1d, show_plots)
         
         # Single companies and company mean
@@ -485,14 +490,14 @@ if __name__ == "__main__":
         # if run_animations: visualize_1d.animate_mean_under_parameter_change()
     
         # Size distrubtions
-        visualize_1d.final_time_size_dist()
+        # visualize_1d.final_time_size_dist()
         # if run_animations: visualize_1d.animate_size_distribution()
         
         # Inflation rate
         visualize_1d.plot_inflation_rate()
         
         # Values of all companies along x-axis
-        visualize_1d.final_time_values(scale=scale)
+        # visualize_1d.final_time_values(scale=scale)
         if run_animations: visualize_1d.animate_values(scale=scale)
     
     if not show_plots: 
