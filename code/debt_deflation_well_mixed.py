@@ -1,6 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 from debt_deflation_master import DebtDeflation, N_agents, time_steps, real_interest_rate, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
+from pathlib import Path
 
 
 class DebtDeflationWellMixed(DebtDeflation):
@@ -20,7 +21,7 @@ class DebtDeflationWellMixed(DebtDeflation):
         super().__init__(number_of_companies, money_to_production_efficiency, real_interest_rate, buy_fraction, equilibrium_distance_fraction, include_debt, time_steps)
         
         # Local paths for saving files.
-        self.dir_path_image = self.dir_path + "image/" + "wellmixed/"
+        self.dir_path_image = Path.joinpath(self.dir_path, "image", "wellmixed")
         self.file_parameter_addon = self.file_parameter_addon_base + "_wellmixed"
 
     
@@ -59,7 +60,8 @@ class DebtDeflationWellMixed(DebtDeflation):
         
         
     def run_simulation(self):
-        self.simulation(self._buyer_seller_idx_money_scaling)
+        # self.simulation(self._buyer_seller_idx_money_scaling)
+        self.simulation(self._buyer_seller_idx_uniform)
         
         
     def run_parameter_change_simulation(self, r_vals, N_repeats):

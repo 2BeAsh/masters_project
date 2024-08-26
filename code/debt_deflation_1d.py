@@ -1,6 +1,6 @@
 import numpy as np
-from tqdm import tqdm
 from debt_deflation_master import DebtDeflation, N_agents, time_steps, real_interest_rate, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
+from pathlib import Path
 
 
 class DebtDeflation1d(DebtDeflation):
@@ -25,7 +25,7 @@ class DebtDeflation1d(DebtDeflation):
         self.nbor = neighbour_width
         
         # Updated image path
-        self.dir_path_image = self.dir_path + "image/" + "1d/"
+        self.dir_path_image = Path.joinpath(self.dir_path, "image", "1d")
         self.file_parameter_addon = self.file_parameter_addon_base +  f"_nborwidth{self.nbor}_1D"
     
     

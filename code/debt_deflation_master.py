@@ -1,5 +1,6 @@
 import numpy as np
 from tqdm import tqdm
+from pathlib import Path
 
 
 class DebtDeflation():
@@ -24,10 +25,11 @@ class DebtDeflation():
         self.time_steps = time_steps  # Steps taken in system evolution.
         
         # Local paths for saving files.
-        self.dir_path = "code/"
-        self.dir_path_output = self.dir_path + "output/"
-        self.dir_path_image = self.dir_path + "image/"
-        self.file_parameter_addon_base = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.real_interest_rate}_Efficiency{self.alpha}_EquilibriumStep{self.epsilon}"        
+        file_path = Path(__file__)
+        self.dir_path = file_path.parent
+        self.dir_path_output = Path.joinpath(self.dir_path, "output")
+        self.dir_path_image = Path.joinpath(self.dir_path, "image")
+        self.file_parameter_addon_base = f"Steps{self.time_steps}_Companies{self.N}_Interest{self.real_interest_rate}_Efficiency{self.alpha}_EquilibriumStep{self.epsilon}"
         
         # Initial parameter values
         self.inflation_rate = 0  # Initially P = M, meaning no inflation
@@ -55,8 +57,9 @@ class DebtDeflation():
     def _smart_loan(self, buyer_idx, seller_idx) -> None:
         # Calculate loan size
         production_money_difference = self.production[seller_idx] - self.money[buyer_idx]
-        production_debt_difference = np.max((0.5*self.production[buyer_idx] - self.r * self.debt[buyer_idx], 0))  # Production is ideal money gained, r * d is money lost. Cannot be negative, so max( ... , 0)
-        loan_size = np.min([production_money_difference, production_debt_difference])
+        production_debt_difference = np.max((self.production[buyer_idx] - self.r * self.debt[buyer_idx], 0))  # Production is ideal money gained, r * d is money lost. Cannot be negative, so max( ... , 0)
+        # loan_size = np.min([production_money_difference, production_debt_difference])  # OBS Might uncomment
+        loan_size = production_debt_difference
         # Update values
         self.money[buyer_idx] += loan_size
         self.debt[buyer_idx] += loan_size
@@ -143,8 +146,12 @@ class DebtDeflation():
         all_data[:, :, 1] = self.debt_hist
         all_data[:, :, 2] = self.money_hist
 
-        filename = self.dir_path_output + self.file_parameter_addon + ".npy"
+        filename = Path.joinpath(self.dir_path_output, self.file_parameter_addon + ".npy")
         np.save(filename, arr=all_data)
+        
+        # Save inflation rate to another file
+        filename_inflation = Path.joinpath(self.dir_path_output, "inflation_" + self.file_parameter_addon + ".npy")
+        np.save(filename_inflation, arr=self.inflation_rate_hist)
     
     
     def simulation(self, func_buyer_seller_idx) -> None:
@@ -159,9 +166,11 @@ class DebtDeflation():
         self.production_hist = np.zeros((self.N, self.time_steps))
         self.debt_hist = np.zeros_like(self.production_hist)
         self.money_hist = np.zeros_like(self.production_hist)
+        self.inflation_rate_hist = np.zeros(self.time_steps)
         self.production_hist[:, 0] = self.production
         self.debt_hist[:, 0] = self.debt
         self.money_hist[:, 0] = self.money
+        self.inflation_rate_hist[0] = self.inflation_rate
         
         # Time evolution
         for i in tqdm(range(1, self.time_steps)):
@@ -172,7 +181,7 @@ class DebtDeflation():
                 self._transaction(buyer_idx, seller_idx)
             # Pay rent and check for bankruptcy
             if self.include_debt:
-                self._repay_debt()
+                # self._repay_debt()
                 self._pay_interest()
                 self._bankruptcy_check()
             self._inflation()
@@ -181,6 +190,7 @@ class DebtDeflation():
             self.production_hist[:, i] = self.production
             self.debt_hist[:, i] = self.debt
             self.money_hist[:, i] = self.money
+            self.inflation_rate_hist[i] = self.inflation_rate
         
         # Save data to file
         self._data_to_file()
@@ -238,11 +248,11 @@ class DebtDeflation():
         
 
 # Parameters
-N_agents = 100
+N_agents = 200
 time_steps = 750
-real_interest_rate = 0.05  # gamma
-money_to_production_efficiency = 0.05  # alpha, growth exponent
-equilibrium_distance_fraction = 0.01  # epsilon
+real_interest_rate = 5e-2  # gamma
+money_to_production_efficiency = np.round(1.8 * real_interest_rate, 3)  # alpha, growth exponent
+equilibrium_distance_fraction = 5e-2  # epsilon
 include_debt = True
 buy_fraction = 1  # sigma
 
