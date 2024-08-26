@@ -80,6 +80,7 @@ class DebtDeflation():
             # self._simple_loan(buyer_idx, seller_idx)
             
         amount_bought = self.buy_fraction * np.min([self.production[seller_idx], self.money[buyer_idx]])
+        amount_bought = np.max((amount_bought, 0))  # Money can go negative if the buyer cannot take a large enough loan to get to positive money
         
         # Update values
         self.money[seller_idx] += amount_bought
@@ -112,9 +113,9 @@ class DebtDeflation():
         bankrupt_idx = np.where(self.production + self.money < self.debt * self.r)
         
         # Set their values to the initial values
-        self.money[bankrupt_idx] = 1
-        self.debt[bankrupt_idx] = 0
-        self.production[bankrupt_idx] = 1
+        self.money[bankrupt_idx] = 1.
+        self.debt[bankrupt_idx] = 0.
+        self.production[bankrupt_idx] = 1.
 
 
     def _inflation(self):
@@ -192,6 +193,23 @@ class DebtDeflation():
             self.money_hist[:, i] = self.money
             self.inflation_rate_hist[i] = self.inflation_rate
         
+        # if (self.production_hist < 1).any():
+        #     print("There were production values below 1")
+        #     idx_below_1 = np.where(self.production_hist < 1)
+        #     idx_comp = idx_below_1[0]
+        #     idx_time = idx_below_1[1]
+        #     print("All")
+        #     print(idx_below_1)
+        #     print("Time values:")
+        #     print(idx_time)
+            
+        #     # Print the value of the first company at the first time going below 1
+        #     idx_first_below_1 = (idx_comp[0], idx_time[0])
+        #     print("First to go below 1:")
+        #     print(self.production_hist[idx_first_below_1])
+            
+            
+        
         # Save data to file
         self._data_to_file()
     
@@ -208,9 +226,9 @@ class DebtDeflation():
         r_original = self.real_interest_rate
         
         # Empty lists for data storage
-        data_production = np.empty((len(r_vals) * N_repeats, self.time_steps))
-        data_debt = np.empty_like(data_production)
-        data_money = np.empty_like(data_production)
+        data_production = np.zeros((len(r_vals) * N_repeats, self.time_steps))
+        data_debt = np.zeros_like(data_production)
+        data_money = np.zeros_like(data_production)
         
         # Get the data
         idx_counter = 0
@@ -248,11 +266,11 @@ class DebtDeflation():
         
 
 # Parameters
-N_agents = 200
-time_steps = 750
-real_interest_rate = 5e-2  # gamma
-money_to_production_efficiency = np.round(1.8 * real_interest_rate, 3)  # alpha, growth exponent
-equilibrium_distance_fraction = 5e-2  # epsilon
+N_agents = 100
+time_steps = 1500
+real_interest_rate = 0.0  # gamma
+money_to_production_efficiency = 0.05 # np.round(1.8 * real_interest_rate, 3)  # alpha, growth exponent
+equilibrium_distance_fraction = 0.8 #5e-2  # epsilon
 include_debt = True
 buy_fraction = 1  # sigma
 
