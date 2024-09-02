@@ -80,6 +80,6 @@ debtdeflation_wellmixed = DebtDeflationWellMixed(number_of_companies=N_agents,
 filename_parameter_addon = debtdeflation_wellmixed.file_parameter_addon
 
 if __name__ == "__main__":
-    debtdeflation_wellmixed.run_simulation()
-    # debtdeflation_wellmixed.run_parameter_change_simulation(interest_values, N_repeats)
+    # debtdeflation_wellmixed.run_simulation()
+    debtdeflation_wellmixed.run_parameter_change_simulation(interest_values, N_repeats)
     
