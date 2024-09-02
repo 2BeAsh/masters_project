@@ -88,7 +88,7 @@ class DebtDeflationVisualization():
         fig, ax = plt.subplots()
         ax.plot(time_values, production_mean, label="Company production")
         ax.plot(time_values, debt_mean, label="Debt")
-        ax.plot(time_values, money_mean, "--", label="Money")
+        # ax.plot(time_values, money_mean, "--", label="Money")
         
         ax.set(xlabel="Time", ylabel="$", title="Mean values", yscale=scale)
         # Figure setup
@@ -415,13 +415,13 @@ class DebtDeflationVisualization():
         # Create initial lines
         line_p = ax.plot(time_values, production_means[0, :])[0]
         line_d = ax.plot(time_values, debt_means[0, :])[0]
-        line_m = ax.plot(time_values, money_means[0, :], "--")[0]
+        # line_m = ax.plot(time_values, money_means[0, :], "--")[0]
         
         # Update function
         def animate(i):
             line_p.set_ydata(production_means[i, :])
             line_d.set_ydata(debt_means[i, :])
-            line_m.set_ydata(money_means[i, :])
+            # line_m.set_ydata(money_means[i, :])
             
             # Title. r value, time_steps (and repeats?)
             r_val_i = r_vals[i]
@@ -430,8 +430,8 @@ class DebtDeflationVisualization():
             # y limits. Only update ylim when new r value
             if i % N_repeats == 0:
                 # Find min and max y value of the next N_repeats values
-                ymin = 0.8 * np.min([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :], money_means[i: i + N_repeats, :]])  # 0.8 factor to reduce impact of outliers
-                ymax = 0.8 * np.max([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :], money_means[i: i + N_repeats, :]])
+                ymin = 0.8 * np.min([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :],])# money_means[i: i + N_repeats, :]])  # 0.8 factor to reduce impact of outliers
+                ymax = 0.8 * np.max([production_means[i: i + N_repeats, :], debt_means[i: i + N_repeats, :],])# money_means[i: i + N_repeats, :]])
                 ax.set_ylim(ymin, ymax)
             ax.set_xlim(time_values[0], time_values[-1])
 
@@ -452,8 +452,8 @@ class DebtDeflationVisualization():
 if __name__ == "__main__":      
     run_well_mixed = True
     run_1d = True
-    show_plots = True
-    run_animations = False
+    run_animations = True
+    show_plots = not run_animations
     
     scale = "log"
     
@@ -465,7 +465,7 @@ if __name__ == "__main__":
         # Single companies and mean
         visualize.plot_companies(N_plot=4, scale=scale)
         visualize.plot_means(scale=scale)
-        # if run_animations: visualize.animate_mean_under_parameter_change()
+        if run_animations: visualize.animate_mean_under_parameter_change()
         
         # # Size distributions
         # visualize.final_time_size_dist()
@@ -476,7 +476,7 @@ if __name__ == "__main__":
 
         # # Values of all companies along x-axis
         # visualize.final_time_values(scale=scale)
-        if run_animations: visualize.animate_values(scale=scale)
+        # if run_animations: visualize.animate_values(scale=scale)
         
 
     # Visualize 1d
@@ -487,7 +487,7 @@ if __name__ == "__main__":
         # Single companies and company mean
         visualize_1d.plot_companies(N_plot=4, scale=scale)
         visualize_1d.plot_means(scale=scale)
-        # if run_animations: visualize_1d.animate_mean_under_parameter_change()
+        if run_animations: visualize_1d.animate_mean_under_parameter_change()
     
         # Size distrubtions
         # visualize_1d.final_time_size_dist()
@@ -498,7 +498,7 @@ if __name__ == "__main__":
         
         # Values of all companies along x-axis
         # visualize_1d.final_time_values(scale=scale)
-        if run_animations: visualize_1d.animate_values(scale=scale)
+        # if run_animations: visualize_1d.animate_values(scale=scale)
     
     if not show_plots: 
         plt.close()

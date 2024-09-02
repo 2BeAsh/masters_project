@@ -93,5 +93,5 @@ filename_parameter_addon_1d = debtdeflation_1d.file_parameter_addon
 
 if __name__ == "__main__":
     # Run the simulation
-    debtdeflation_1d.run_simulation()
-    # debtdeflation_1d.run_parameter_change_simulation(interest_values, N_repeats)
+    # debtdeflation_1d.run_simulation()
+    debtdeflation_1d.run_parameter_change_simulation(interest_values, N_repeats)
