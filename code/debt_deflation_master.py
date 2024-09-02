@@ -258,7 +258,7 @@ class DebtDeflation():
         all_data[:, :, 2] = np.array(data_money)
         all_data[:, :, 3] = r_vals_save
 
-        filename = self.dir_path_output + self.file_parameter_addon + "_parameter_change" + ".npy"
+        filename = Path.joinpath(self.dir_path_output, "parameter_change_" + self.file_parameter_addon + ".npy")
         np.save(filename, arr=all_data)
 
         # Restore orignal interest value
@@ -267,15 +267,15 @@ class DebtDeflation():
 
 # Parameters
 N_agents = 100
-time_steps = 1500
-real_interest_rate = 0.0  # gamma
-money_to_production_efficiency = 0.05 # np.round(1.8 * real_interest_rate, 3)  # alpha, growth exponent
-equilibrium_distance_fraction = 0.8 #5e-2  # epsilon
+time_steps = 1250
+real_interest_rate = 0.5  # gamma
+money_to_production_efficiency = 1 #np.round(1.8 * real_interest_rate, 3)  # alpha, growth exponent
+equilibrium_distance_fraction = 5e-2  # epsilon
 include_debt = True
 buy_fraction = 1  # sigma
 
 # For parameter_change_simulation
-interest_values = np.array([0.01, 0.025, 0.05, 0.1, 0.15, 0.2])
+interest_values = np.array([0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
 N_repeats = 10
 
 
