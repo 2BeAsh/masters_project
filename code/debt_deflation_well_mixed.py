@@ -1,5 +1,4 @@
 import numpy as np
-from tqdm import tqdm
 from debt_deflation_master import DebtDeflation, N_agents, time_steps, real_interest_rate, money_to_production_efficiency, buy_fraction, equilibrium_distance_fraction, include_debt, interest_values, N_repeats
 from pathlib import Path
 
@@ -33,7 +32,8 @@ class DebtDeflationWellMixed(DebtDeflation):
             tuple: buyer idx, seller idx
         """
         seller_idx = np.random.randint(low=0, high=self.N)
-        buyer_idx = np.random.randint(low=0, high=self.N)
+        avaiable_buyer_idx = np.arange(self.N)[np.arange(self.N) != seller_idx]
+        buyer_idx = np.random.choice(a=avaiable_buyer_idx)
         return buyer_idx, seller_idx
     
     
@@ -80,6 +80,6 @@ debtdeflation_wellmixed = DebtDeflationWellMixed(number_of_companies=N_agents,
 filename_parameter_addon = debtdeflation_wellmixed.file_parameter_addon
 
 if __name__ == "__main__":
-    # debtdeflation_wellmixed.run_simulation()
-    debtdeflation_wellmixed.run_parameter_change_simulation(interest_values, N_repeats)
+    debtdeflation_wellmixed.run_simulation()
+    # debtdeflation_wellmixed.run_parameter_change_simulation(interest_values, N_repeats)
     
