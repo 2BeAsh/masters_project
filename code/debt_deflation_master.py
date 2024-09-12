@@ -193,23 +193,6 @@ class DebtDeflation():
             self.money_hist[:, i] = self.money
             self.inflation_rate_hist[i] = self.inflation_rate
         
-        # if (self.production_hist < 1).any():
-        #     print("There were production values below 1")
-        #     idx_below_1 = np.where(self.production_hist < 1)
-        #     idx_comp = idx_below_1[0]
-        #     idx_time = idx_below_1[1]
-        #     print("All")
-        #     print(idx_below_1)
-        #     print("Time values:")
-        #     print(idx_time)
-            
-        #     # Print the value of the first company at the first time going below 1
-        #     idx_first_below_1 = (idx_comp[0], idx_time[0])
-        #     print("First to go below 1:")
-        #     print(self.production_hist[idx_first_below_1])
-            
-            
-        
         # Save data to file
         self._data_to_file()
     
@@ -266,10 +249,10 @@ class DebtDeflation():
         
 
 # Parameters
-N_agents = 100
-time_steps = 1250
-real_interest_rate = 0.5  # gamma
-money_to_production_efficiency = 1 #np.round(1.8 * real_interest_rate, 3)  # alpha, growth exponent
+N_agents = 1000
+time_steps = 500
+real_interest_rate = 0.03  # gamma
+money_to_production_efficiency = 0.05 #np.round(1.8 * real_interest_rate, 3)  # alpha, growth exponent
 equilibrium_distance_fraction = 5e-2  # epsilon
 include_debt = True
 buy_fraction = 1  # sigma
