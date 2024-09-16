@@ -1,11 +1,11 @@
 import numpy as np
 from tqdm import tqdm
-from bank_master import BankDebtDeflation, time_steps, N_companies, alpha, interest_rate_change_size, beta_mutation_size
+from bank_master import BankDebtDeflation, time_steps, N_companies, alpha, interest_rate_change_size, beta_mutation_size, N_interest_update, beta_update_method, derivative_order
 from pathlib import Path
 
 
 class BankWellMixed(BankDebtDeflation):
-    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size: float, beta_mutation_size: float, time_steps: int):
+    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size: float, beta_mutation_size: float, N_interest_update: int, beta_update_method: str, derivative_order: int, time_steps: int):
         """_summary_
 
         Args:
@@ -15,7 +15,7 @@ class BankWellMixed(BankDebtDeflation):
             time_steps (int): _description_
         """
         # Get master methods
-        super().__init__(number_of_companies, money_to_production_efficiency, interest_rate_change_size, beta_mutation_size, time_steps)
+        super().__init__(number_of_companies, money_to_production_efficiency, interest_rate_change_size, beta_mutation_size, N_interest_update, beta_update_method, derivative_order, time_steps)
 
         # Local paths for saving files.
         self.dir_path_image = Path.joinpath(self.dir_path, "image_bank", "wellmixed")
@@ -47,6 +47,9 @@ bank_wellmixed = BankWellMixed(number_of_companies=N_companies,
                                money_to_production_efficiency=alpha,
                                interest_rate_change_size=interest_rate_change_size, 
                                beta_mutation_size=beta_mutation_size,
+                               N_interest_update=N_interest_update,
+                               beta_update_method=beta_update_method,
+                               derivative_order=derivative_order,
                                time_steps=time_steps)
 
 
