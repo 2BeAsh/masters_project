@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 class BankDebtDeflation():
-    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size=0.01, beta_mutation_size=0.05, N_interest_update=1, time_steps=1000):
+    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size=0.01, beta_mutation_size=0.05, N_interest_update=1, beta_update_method="production", derivative_order=1, time_steps=1000):
         """Initializer. Children must define the following:
             self.file_parameter_addon
 
@@ -13,11 +13,17 @@ class BankDebtDeflation():
             money_to_production_efficiency (float): _description_
             time_steps (int): _description_
         """
+        # Check different input values are correct
+        assert beta_update_method in ["production", "random"]
+        assert derivative_order in [1, 2]
+        
         self.N = number_of_companies
         self.alpha = money_to_production_efficiency  # Money to production efficiency
         self.interest_rate_change_size = interest_rate_change_size
         self.beta_mutation_size = beta_mutation_size
         self.N_update = N_interest_update  # Number of interest rate updates before a new interest rate is set
+        self.beta_update_method = beta_update_method  # How new beta values are chosen
+        self.derivative_order = derivative_order  # Order of derivative used for interest rate adjustment
         self.time_steps = time_steps  # Steps taken in system evolution.
 
         # Local paths for saving files.
@@ -25,7 +31,7 @@ class BankDebtDeflation():
         self.dir_path = file_path.parent
         self.dir_path_output = Path.joinpath(self.dir_path, "output")
         self.dir_path_image = Path.joinpath(self.dir_path, "image_bank")
-        self.file_parameter_addon_base = f"Steps{self.time_steps}_N{self.N}_alpha{self.alpha}_dr{interest_rate_change_size}_dbeta{beta_mutation_size}"
+        self.file_parameter_addon_base = f"Steps{self.time_steps}_N{self.N}_alpha{self.alpha}_dr{interest_rate_change_size}_dbeta{beta_mutation_size}_betaUpdate{beta_update_method}_deriv{derivative_order}"
 
         # Other parameters are initialized in _initialize_market
 
@@ -116,14 +122,11 @@ class BankDebtDeflation():
         Args:
             idx_new_companies (np.ndarray): Indices whose beta values are to be mutated
         """
-        # Choose which of the update methods to use
-        pick_best_production = True
         
-        # Only run if there actually is any bankrupt companies
         idx_new_companies = idx_new_companies[0]  # Remove dtype
         N_new_companies = idx_new_companies.size
         if N_new_companies > 0:
-            if pick_best_production:
+            if self.beta_update_method == "production":
                 # Get beta value of the company with the highest production
                 beta_top = self.beta[np.argmax(self.p)]
                 # New companies beta values is then the chosen top company's beta value plus a small change
@@ -131,7 +134,7 @@ class BankDebtDeflation():
                 self.beta[idx_new_companies] = beta_top + mutations
 
             # Second option: Each bankrupt company picks a random beta value from the surviving companies and adds a mutation            
-            else:            
+            elif self.beta_update_method == "random":            
                 # Get index of surviving companies by removing the bankrupt companies
                 idx_surviving_companies = np.arange(self.N)[~np.isin(np.arange(self.N), idx_new_companies)]
                 # Choose a random beta value from the surviving companies for each bankrupt company
@@ -139,6 +142,8 @@ class BankDebtDeflation():
                 # Add a mutation to the chosen beta values
                 mutations = np.random.uniform(low=-self.beta_mutation_size, high=self.beta_mutation_size, size=N_new_companies)
                 self.beta[idx_new_companies] = beta_from_surviving + mutations    
+            else:
+                raise ValueError(f"{self.beta_update_method} is not a valid value for beta_update_method.")
 
 
     def _company_bankruptcy_check(self):
@@ -185,28 +190,37 @@ class BankDebtDeflation():
         If the bank has experienced positive growth, it repeats the previus interest rate adjustment, but if the growth was negative, it does the opposite adjustment.
         """
         if time_step >= 4:  # Ensure enough data points for derivative
-            # Two possible options for defining growth: first derivative or second derivative
-            # Find derivative and store it
+            # Two possible options for defining growth: first derivative or second derivative. Store whichever is wanted, determinted by self.derivative_order
             derivative_1st = self._first_deriv_backwards(time_step)
             derivative_2nd = self._second_deriv_backwards(time_step)
-            self.derivative_list.append(1 * derivative_2nd)
+
+            if self.derivative_order == 1:
+                self.derivative_list.append(1 * derivative_1st)
+            elif self.derivative_order == 2:
+                self.derivative_list.append(1 * derivative_2nd)
+            else:
+                raise ValueError(f"{self.derivative_order} is not a valid value for derivative_order")
 
             # Store derivs for plotting
             self.first_derivative_hist.append(derivative_1st)
             self.second_derivative_hist.append(derivative_2nd)
 
-
         if len(self.derivative_list) == self.N_update:
             # Find mean of the last N_update interest rates derivatives
             mean_derivative = np.mean(self.derivative_list)
+            # If doing good, no change is made.
             # If doing bad, do the opposite action as before i.e. flip sign of interest_policy.
-            # If doing good, no change is made
             if mean_derivative <= 1e-5:
                 self.interest_policy *= -1
 
-            # Update interest rate
-            self.interest_rate = self.interest_rate * (1 + self.interest_policy * self.interest_rate_change_size)
-            # Empty list of derivatives
+            # Update interest rate 
+            # NOTE if want to avoid the negative bias, need to check if self.interest_policy > 0, then 
+            if self.interest_policy > 0:
+                negative_bias_correction_factor = 1 / (1 - self.interest_rate_change_size)  # Found analytically
+                self.interest_rate = self.interest_rate * (1 + negative_bias_correction_factor * self.interest_rate_change_size)
+            else:
+                self.interest_rate = self.interest_rate * (1 - self.interest_rate_change_size)
+            # Reset list of derivatives
             self.derivative_list = []
 
 
@@ -271,6 +285,8 @@ time_steps = 5000
 alpha = 0.05
 interest_rate_change_size = 0.05
 beta_mutation_size = 0.08
+beta_update_method = "production"
+derivative_order = 2
 N_interest_update = 1
 
 if __name__ == "__main__":
