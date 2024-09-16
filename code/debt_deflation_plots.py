@@ -320,12 +320,15 @@ class DebtDeflationVisualization():
         print("Time saving animation: \t", time_save_ani - time_create_ani)
         
         
-    def animate_values(self, scale="log", on_same_row=False):
+    def animate_values(self, scale="log"):
         # Store time at initial time to later find the time taken for different parts of the animation
         time_i = time()
         
         # Load data
         production, debt, money = self._load_data()
+        production = production[:, :-2000]
+        debt = debt[:, :-2000]
+        money = money[:, :-2000]  
         N = np.shape(production)[0]
         x_vals = np.arange(N)
         
@@ -400,7 +403,7 @@ class DebtDeflationVisualization():
         anim = animation.FuncAnimation(fig, animate, interval=1, frames=self.time_steps, blit=True)
         
         time_create_anim = time()  # Record time
-        animation_name = Path.joinpath(self.dir_path_image, "value_animation_" + f"{scale}_same_row{on_same_row}_" + self.filename + ".mp4")
+        animation_name = Path.joinpath(self.dir_path_image, "value_animation_" + f"{scale}_" + self.filename + ".mp4")
         anim.save(animation_name, fps=30)
         
         # Display times
