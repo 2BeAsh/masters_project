@@ -283,15 +283,19 @@ class BankVisualization(DebtDeflationVisualization):
         consecutive_counts_1st = self._count_consecutive_signs(self.first_derivative)
         consecutive_counts_2nd = self._count_consecutive_signs(self.second_derivative)
         
+        # Rescale time to match counts by taking the cumulative sum of the counts with and extra zero added at the start. Therefore, has to exclude the last element
+        time_vals_1st = np.cumsum(np.concatenate((np.abs(consecutive_counts_1st), [0])))[:-1]
+        time_vals_2nd = np.cumsum(np.concatenate((np.abs(consecutive_counts_2nd), [0])))[:-1]
+        
         # Create figure and extract axis
         fig, (ax, ax1) = plt.subplots(nrows=2)
         
         # Plot consecutive counts for first derivative
-        ax.plot(consecutive_counts_1st, "-", markersize=2)        
-        ax1.plot(consecutive_counts_2nd, "-", markersize=2)
+        ax.plot(time_vals_1st, consecutive_counts_1st, "--.", markersize=4)        
+        ax1.plot(time_vals_2nd, consecutive_counts_2nd, "--.", markersize=4)
 
         ax.set(ylabel="Counts", title="First Derivative")
-        ax1.set(xlabel="Index", ylabel="Counts", title="Second Derivative")
+        ax1.set(xlabel="Time", ylabel="Counts", title="Second Derivative")
 
         # Grid
         ax.grid()
@@ -312,7 +316,7 @@ if __name__ == "__main__":
         print("Plotting Well Mixed")
         visualize = BankVisualization(filename_parameter_addon, show_plots)
         
-        # visualize.plot_companies(N_plot=4, scale=scale)
+        visualize.plot_companies(N_plot=4, scale=scale)
         visualize.plot_means(scale)
         visualize.final_time_values(scale)
         visualize.final_time_size_dist()
