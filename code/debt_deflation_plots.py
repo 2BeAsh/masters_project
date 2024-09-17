@@ -326,9 +326,9 @@ class DebtDeflationVisualization():
         
         # Load data
         production, debt, money = self._load_data()
-        production = production[:, :-2000]
-        debt = debt[:, :-2000]
-        money = money[:, :-2000]  
+        # production = production[:, :-2000]
+        # debt = debt[:, :-2000]
+        # money = money[:, :-2000]  
         N = np.shape(production)[0]
         x_vals = np.arange(N)
         
