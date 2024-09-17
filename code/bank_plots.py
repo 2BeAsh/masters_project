@@ -79,19 +79,22 @@ class BankVisualization(DebtDeflationVisualization):
         # Money
         mask_neg_money = self.bank_money < 0
         mask_pos_money = self.bank_money > 0
-        ax.plot(self.time_vals[mask_neg_money], np.abs(self.bank_money[mask_neg_money]), ".", color="red", label="Negative Money", markersize=2)
-        ax.plot(self.time_vals[mask_pos_money], self.bank_money[mask_pos_money], ".", color="green", label="Positive Money", markersize=2)
+        ax.plot(self.time_vals[mask_neg_money], np.abs(self.bank_money[mask_neg_money]), ".", color="red", label="abs(M<0)", markersize=2)
+        ax.plot(self.time_vals[mask_pos_money], self.bank_money[mask_pos_money], ".", color="green", label="M>0", markersize=2)
 
         # Debt
         ax.plot(self.time_vals, debt_summed, label="Debt", marker=".", markersize=2)
         
         # Bank fortune 
-        ax.plot(self.time_vals, self.bank_fortune, "--", color="black", label="Bank fortune", alpha=0.9)
+        mask_neg_fortune = self.bank_fortune < 0
+        mask_pos_fortune = self.bank_fortune > 0
+        ax.plot(self.time_vals[mask_neg_fortune], np.abs(self.bank_fortune[mask_neg_fortune]), "x", color="darkred", label="abs(F<0)", alpha=0.9)
+        ax.plot(self.time_vals[mask_pos_fortune], self.bank_fortune[mask_pos_fortune], "x", color="darkgreen", label="F>0", alpha=0.9, markersize=1.5)
         
         # Axis setup
         ax.set(ylabel="Log \$", title="Bank fortune and its components", yscale="log")
         ax.grid()
-        ax.legend(ncols=4, bbox_to_anchor=(0.5, 0.95), loc="lower center", fontsize=6)
+        ax.legend(ncols=5, bbox_to_anchor=(0.5, 0.95), loc="lower center", fontsize=5)
         
         self._add_parameters_text(ax)
         self._save_fig(fig, name="bankfortune")
@@ -308,7 +311,7 @@ class BankVisualization(DebtDeflationVisualization):
 
 if __name__ == "__main__": 
     run_wm = True  # Well mixed
-    show_plots = True
+    show_plots = False
     animate = False
     scale = "log"
         
