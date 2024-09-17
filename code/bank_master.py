@@ -17,6 +17,7 @@ class BankDebtDeflation():
         assert beta_update_method in ["production", "random"]
         assert derivative_order in [1, 2]
         
+        # Set parameters
         self.N = number_of_companies
         self.alpha = money_to_production_efficiency  # Money to production efficiency
         self.interest_rate_change_size = interest_rate_change_size
@@ -33,6 +34,8 @@ class BankDebtDeflation():
         self.dir_path_image = Path.joinpath(self.dir_path, "image_bank")
         self.file_parameter_addon_base = f"Steps{self.time_steps}_N{self.N}_alpha{self.alpha}_dr{interest_rate_change_size}_dbeta{beta_mutation_size}_betaUpdate{beta_update_method}_deriv{derivative_order}"
 
+        np.random.seed(0)  # For variable control
+        
         # Other parameters are initialized in _initialize_market
 
 
@@ -44,7 +47,7 @@ class BankDebtDeflation():
         self.bank_money = 1#self.N  # Choose another value? N?
         self.interest_rate = 0.1  # OBS might choose another value. 0 could be okay, as system probably needs warmup anyway. Could also mean too safe a start prolonging warmup.
         self.derivative_list = []
-        self.interest_policy = 1  # -1 means reduce, 1 means increase
+        self.interest_action = 1  # -1 means reduce, 1 means increase
         self.did_not_take_loan = 0
 
 
@@ -167,7 +170,7 @@ class BankDebtDeflation():
         Returns:
             float: First derivative of the interest rate at the current time
         """
-        F_last_three = self.bank_fortune_hist[time_step - 3 : time_step]
+        F_last_three = self.bank_fortune_hist[time_step - 4 : time_step -1 ]  # Current timestep has not been updated yet
         backwards_stencil = np.array([1/2, -2, 3/2])
         dt = 1  # dt does not matter, as only interested in if positive or negative
         return np.dot(F_last_three, backwards_stencil) / dt
@@ -179,7 +182,7 @@ class BankDebtDeflation():
         Returns:
             float: Second derivative of the interest rate at the current time
         """
-        F_last_four = self.bank_fortune_hist[time_step - 4 : time_step]
+        F_last_four = self.bank_fortune_hist[time_step - 5 : time_step - 1]  # Current timestep has not been updated yet
         backwards_stencil = np.array([-1, 4, -5, 2])
         dt = 1  # dt does not matter, only sign of derivative does
         return np.dot(F_last_four, backwards_stencil) / dt ** 2
@@ -189,7 +192,7 @@ class BankDebtDeflation():
         """Bank sets a new interest rate.
         If the bank has experienced positive growth, it repeats the previus interest rate adjustment, but if the growth was negative, it does the opposite adjustment.
         """
-        if time_step >= 4:  # Ensure enough data points for derivative
+        if time_step >= 5:  # Ensure enough data points for derivative
             # Two possible options for defining growth: first derivative or second derivative. Store whichever is wanted, determinted by self.derivative_order
             derivative_1st = self._first_deriv_backwards(time_step)
             derivative_2nd = self._second_deriv_backwards(time_step)
@@ -208,25 +211,26 @@ class BankDebtDeflation():
         if len(self.derivative_list) == self.N_update:
             # Find mean of the last N_update interest rates derivatives
             mean_derivative = np.mean(self.derivative_list)
-            # If doing good, no change is made.
-            # If doing bad, do the opposite action as before i.e. flip sign of interest_policy.
-            if mean_derivative <= 1e-5:
-                self.interest_policy *= -1
-
-            # Update interest rate 
-            # NOTE if want to avoid the negative bias, need to check if self.interest_policy > 0, then 
-            if self.interest_policy > 0:
+            
+            # Change interest action (i.e. swap from decrease to increase or vice versa) if derivative changes sign.            
+            if self.interest_action != np.sign(mean_derivative):
+                self.interest_action *= -1
+            
+            # Update interest rate to be a percent of its previous value
+            # Positive increasement are adjusted to match the inherent larger decreasements
+            if self.interest_action == 1:  
                 negative_bias_correction_factor = 1 / (1 - self.interest_rate_change_size)  # Found analytically
                 self.interest_rate = self.interest_rate * (1 + negative_bias_correction_factor * self.interest_rate_change_size)
-            else:
+            else:  # self.interest_action == -1
                 self.interest_rate = self.interest_rate * (1 - self.interest_rate_change_size)
+            
             # Reset list of derivatives
             self.derivative_list = []
 
 
     def _data_to_file(self) -> None:
         # Collect data to store in one array
-        all_data = np.empty((self.N, self.time_steps, 8))
+        all_data = np.zeros((self.N, self.time_steps, 8))
         all_data[:, :, 0] = self.p_hist
         all_data[:, :, 1] = self.d_hist
         all_data[:, :, 2] = self.m_hist
@@ -234,8 +238,8 @@ class BankDebtDeflation():
         all_data[:, :, 4] = self.interest_rate_hist
         all_data[:, :, 5] = self.beta_hist
         all_data[:, :, 6] = self.did_not_take_loan_hist
-        all_data[0, :-4, 7]  = np.array(self.first_derivative_hist)
-        all_data[1, :-4, 7]  = np.array(self.second_derivative_hist)
+        all_data[0, :-5, 7]  = np.array(self.first_derivative_hist)
+        all_data[1, :-5, 7]  = np.array(self.second_derivative_hist)
 
         filename = Path.joinpath(self.dir_path_output, self.file_parameter_addon + ".npy")
         np.save(filename, arr=all_data)
@@ -282,10 +286,10 @@ class BankDebtDeflation():
 # Parameters
 N_companies = 100
 time_steps = 5000
-alpha = 0.05
+alpha = 0.15
 interest_rate_change_size = 0.05
 beta_mutation_size = 0.08
-beta_update_method = "production"
+beta_update_method = "random"  # "production" or "random"
 derivative_order = 2
 N_interest_update = 1
 
