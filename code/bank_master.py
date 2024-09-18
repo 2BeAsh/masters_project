@@ -1,10 +1,12 @@
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
+from typing import Callable
 
 
 class BankDebtDeflation():
-    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size=0.01, beta_mutation_size=0.05, N_interest_update=1, beta_update_method="production", derivative_order=1, time_steps=1000):
+    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size=0.01, 
+                 beta_mutation_size=0.05, beta_update_method="production", derivative_order=2, time_steps=1000):
         """Initializer. Children must define the following:
             self.file_parameter_addon
 
@@ -22,7 +24,6 @@ class BankDebtDeflation():
         self.alpha = money_to_production_efficiency  # Money to production efficiency
         self.interest_rate_change_size = interest_rate_change_size
         self.beta_mutation_size = beta_mutation_size
-        self.N_update = N_interest_update  # Number of interest rate updates before a new interest rate is set
         self.beta_update_method = beta_update_method  # How new beta values are chosen
         self.derivative_order = derivative_order  # Order of derivative used for interest rate adjustment
         self.time_steps = time_steps  # Steps taken in system evolution.
@@ -34,7 +35,7 @@ class BankDebtDeflation():
         self.dir_path_image = Path.joinpath(self.dir_path, "image_bank")
         self.file_parameter_addon_base = f"Steps{self.time_steps}_N{self.N}_alpha{self.alpha}_dr{interest_rate_change_size}_dbeta{beta_mutation_size}_betaUpdate{beta_update_method}_deriv{derivative_order}"
 
-        np.random.seed(0)  # For variable control
+        np.random.seed(1)  # For variable control
         
         # Other parameters are initialized in _initialize_market
 
@@ -44,9 +45,9 @@ class BankDebtDeflation():
         self.d = np.zeros(self.N) * 1.
         self.m = np.ones(self.N) * 1.
         self.beta = np.random.uniform(low=0, high=1, size=self.N)  # Risk factor in loans
-        self.bank_money = 1#self.N  # Choose another value? N?
+        self.bank_money = 1  # Value of bank_money doesn't matter for derivatives 
         self.interest_rate = 0.1  # OBS might choose another value. 0 could be okay, as system probably needs warmup anyway. Could also mean too safe a start prolonging warmup.
-        self.derivative_list = []
+        self.interest_rate_PD_adjusted = self.interest_rate
         self.interest_action = 1  # -1 means reduce, 1 means increase
         self.did_not_take_loan = 0
 
@@ -61,7 +62,9 @@ class BankDebtDeflation():
         self.beta_hist = np.empty_like(self.p_hist)
         self.bank_fortune_hist = np.empty(self.time_steps)
         self.interest_rate_hist = np.empty_like(self.bank_fortune_hist)
+        self.interest_rate_PD_adjusted_hist = np.empty_like(self.bank_fortune_hist)
         self.did_not_take_loan_hist = np.empty(self.time_steps)
+        self.N_bankrupt_hist = np.empty(self.time_steps)
         self.first_derivative_hist = []
         self.second_derivative_hist = []
 
@@ -69,9 +72,10 @@ class BankDebtDeflation():
         self.p_hist[:, 0] = self.p * 1
         self.d_hist[:, 0] = self.d * 1
         self.m_hist[:, 0] = self.m * 1
-        self.beta_hist[:, 0] = self.beta
+        self.beta_hist[:, 0] = self.beta * 1
         self.bank_fortune_hist[0] = self.bank_money * 1  # No debt initially
         self.interest_rate_hist[0] = self.interest_rate * 1
+        self.interest_rate_PD_adjusted_hist[0] = self.interest_rate_PD_adjusted * 1
         self.did_not_take_loan_hist[0] = self.did_not_take_loan * 1  # Must have initial value.
 
 
@@ -79,8 +83,8 @@ class BankDebtDeflation():
         # Establish loan boundaries and clip the smart loan to match the boundaries
         debt_max = self.p[seller_idx] - self.m[buyer_idx]  # No reason to go beyond the seller's production
         debt_min = 0  # Cannot take negative debt
-        delta_debt = (self.beta[buyer_idx] * self.p[buyer_idx] + self.m[buyer_idx]) / self.interest_rate - self.d[buyer_idx]
-        delta_debt_clipped = np.clip(delta_debt, a_min=debt_min, a_max=debt_max)
+        delta_debt = (self.beta[buyer_idx] * self.p[buyer_idx] + self.m[buyer_idx]) / self.interest_rate_PD_adjusted - self.d[buyer_idx]
+        delta_debt_clipped = np.clip(a=delta_debt, a_min=debt_min, a_max=debt_max)
 
         # If debt == 0 (could be because non-clipped debt was negative), no loan was taken
         if delta_debt_clipped == 0:
@@ -105,21 +109,36 @@ class BankDebtDeflation():
         self.p[buyer_idx] += delta_money * self.alpha
 
 
+    def _negative_money_to_loan(self):
+        """If any company has entered negative money, take a loan to correct it.
+        """
+        # Find companies with negative money
+        idx_negative_money = np.where(self.m < 0)
+        # Take debt to set money to zero
+        debt = np.abs(self.m[idx_negative_money]) + 0.1  # 0.1 is negligeable, but makes log-plotting prettier
+        # Update company money and debt values, and bank money
+        self.m[idx_negative_money] += debt
+        self.d[idx_negative_money] += debt
+        self.bank_money -= debt.sum()
+
+
     def _pay_interest(self):
-        self.m -= self.interest_rate * self.d
-        self.bank_money += self.interest_rate * np.sum(self.d)
+        """Pay interest to the bank.
+        """
+        self.m -= self.interest_rate_PD_adjusted * self.d
+        self.bank_money += self.interest_rate_PD_adjusted * np.sum(self.d)
 
 
     def _pay_interest_and_check_bankruptcy(self):
         """Interest is payed first, but the companies that went bankrupt from this do not pay the bank any money.
         Tries to model the idea that bank requires interest payment, but because the company is unable to pay it, they go bankrupt instead.
         """
-        self.m -= self.interest_rate * self.d
+        self.m -= self.interest_rate_PD_adjusted * self.d
         self._company_bankruptcy_check()
-        self.bank_money += self.interest_rate * np.sum(self.d)
+        self.bank_money += self.interest_rate_PD_adjusted * np.sum(self.d)
 
 
-    def _mutate_beta(self, idx_new_companies: np.ndarray):
+    def _mutate_beta(self, idx_new_companies: np.ndarray) -> None:
         """Given list of indices, update the beta values of those indices to be the beta value value of the company with the highest production plus a small change.
 
         Args:
@@ -133,7 +152,8 @@ class BankDebtDeflation():
                 # Get beta value of the company with the highest production
                 beta_top = self.beta[np.argmax(self.p)]
                 # New companies beta values is then the chosen top company's beta value plus a small change
-                mutations = np.random.uniform(low=-self.beta_mutation_size, high=self.beta_mutation_size, size=N_new_companies)
+                mutations = self.beta_mutation_size * (np.random.randint(low=0, high=2, size=N_new_companies) * 2 - 1)  # Randomly choose between -1 and 1
+                
                 self.beta[idx_new_companies] = beta_top + mutations
 
             # Second option: Each bankrupt company picks a random beta value from the surviving companies and adds a mutation            
@@ -149,19 +169,26 @@ class BankDebtDeflation():
                 raise ValueError(f"{self.beta_update_method} is not a valid value for beta_update_method.")
 
 
-    def _company_bankruptcy_check(self):
-        """Bankrupt if p + m < d. If goes bankrupt, start a new company in its place with initial values.
-        Intuition is that when m=0, you must have high enough production to pay off the debt in one transaction i.e. p > d"""
+    def _company_bankruptcy_check(self) -> None:
+        """Bankrupt if p + m < d. If goes bankrupt, first pay any remaining money to the bank, 
+        then start a new company in its place with initial values.
+        """
         # Find all companies who have gone bankrupt
-        bankrupt_idx = np.where(self.p + self.m < self.d * self.interest_rate)
+        bankrupt_idx = np.where(self.p + self.m < self.d * self.interest_rate_PD_adjusted)
+        self.N_bankrupt = bankrupt_idx[0].size
 
-        # Set their values to the initial values
+        # Companies with positive money pay it to the bank
+        bankrupt_companies_with_positive_money_idx = np.where(self.m[bankrupt_idx] > 0)
+        self.bank_money += np.sum(self.m[bankrupt_idx][bankrupt_companies_with_positive_money_idx])
+        
+        # Start new companies, i.e. set bankrupt companies to the initial values
         self.m[bankrupt_idx] = 1.
         self.d[bankrupt_idx] = 0.
         self.p[bankrupt_idx] = 1.
-        # Mutate beta values i.e. give each bankrupt company a living company's beta value and change it slightly
+        
+        # Mutate beta values of the new companies
         self._mutate_beta(bankrupt_idx)
-
+        
 
     def _first_deriv_backwards(self, time_step: int) -> float:
         """Compute the first derivative of the bank fortune at the current time using a backwards stencil.
@@ -192,28 +219,22 @@ class BankDebtDeflation():
         """Bank sets a new interest rate.
         If the bank has experienced positive growth, it repeats the previus interest rate adjustment, but if the growth was negative, it does the opposite adjustment.
         """
-        if time_step >= 5:  # Ensure enough data points for derivative
-            # Two possible options for defining growth: first derivative or second derivative. Store whichever is wanted, determinted by self.derivative_order
+        # Ensure enough data points for derivative. 5 is the minimum number of data points needed for the second derivative.
+        if time_step >= 5:  
+            # Two possible options for defining growth: first derivative or second derivative. 
+            # Use whichever is wanted, determinted by self.derivative_order. Both are stored for plotting.
             derivative_1st = self._first_deriv_backwards(time_step)
             derivative_2nd = self._second_deriv_backwards(time_step)
 
-            if self.derivative_order == 1:
-                self.derivative_list.append(1 * derivative_1st)
-            elif self.derivative_order == 2:
-                self.derivative_list.append(1 * derivative_2nd)
-            else:
-                raise ValueError(f"{self.derivative_order} is not a valid value for derivative_order")
+            deriv_list = [derivative_1st, derivative_2nd]
+            deriv = deriv_list[self.derivative_order - 1]  # -1 to match 0-indexing and derivative order
 
             # Store derivs for plotting
             self.first_derivative_hist.append(derivative_1st)
             self.second_derivative_hist.append(derivative_2nd)
 
-        if len(self.derivative_list) == self.N_update:
-            # Find mean of the last N_update interest rates derivatives
-            mean_derivative = np.mean(self.derivative_list)
-            
             # Change interest action (i.e. swap from decrease to increase or vice versa) if derivative changes sign.            
-            if self.interest_action != np.sign(mean_derivative):
+            if self.interest_action != np.sign(deriv):
                 self.interest_action *= -1
             
             # Update interest rate to be a percent of its previous value
@@ -223,26 +244,13 @@ class BankDebtDeflation():
                 self.interest_rate = self.interest_rate * (1 + negative_bias_correction_factor * self.interest_rate_change_size)
             else:  # self.interest_action == -1
                 self.interest_rate = self.interest_rate * (1 - self.interest_rate_change_size)
-            
-            # Reset list of derivatives
-            self.derivative_list = []
 
 
-    def _data_to_file(self) -> None:
-        # Collect data to store in one array
-        all_data = np.zeros((self.N, self.time_steps, 8))
-        all_data[:, :, 0] = self.p_hist
-        all_data[:, :, 1] = self.d_hist
-        all_data[:, :, 2] = self.m_hist
-        all_data[:, :, 3] = self.bank_fortune_hist
-        all_data[:, :, 4] = self.interest_rate_hist
-        all_data[:, :, 5] = self.beta_hist
-        all_data[:, :, 6] = self.did_not_take_loan_hist
-        all_data[0, :-5, 7]  = np.array(self.first_derivative_hist)
-        all_data[1, :-5, 7]  = np.array(self.second_derivative_hist)
-
-        filename = Path.joinpath(self.dir_path_output, self.file_parameter_addon + ".npy")
-        np.save(filename, arr=all_data)
+    def _adjust_interest_for_defualt_probability(self, time_step):
+        # Calculate mean default probability of the last 5 time steps and find the probability of default adjusted interest rate
+        # prob_default = np.mean(self.N_bankrupt_hist[time_step - 10: time_step - 1]) / self.N
+        # prob_default = np.min([prob_default, 0])  # Avoid division by zero. 0.99 is arbitrary, but should be close to 1.
+        self.interest_rate_PD_adjusted = 1 * self.interest_rate #(1 + self.interest_rate) / (1 - prob_default) - 1
 
 
     def _store_values_in_hist_arrays(self, time_step):
@@ -253,8 +261,28 @@ class BankDebtDeflation():
         self.beta_hist[:, time_step] = self.beta * 1
         self.bank_fortune_hist[time_step] = self.bank_money + np.sum(self.d)
         self.interest_rate_hist[time_step] = self.interest_rate * 1
+        self.interest_rate_PD_adjusted_hist[time_step] = self.interest_rate_PD_adjusted * 1
+        self.N_bankrupt_hist[time_step] = self.N_bankrupt * 1
         self.did_not_take_loan_hist[time_step] = self.did_not_take_loan * 1
         self.did_not_take_loan = 0  # Reset to 0 for next time step
+
+
+    def _data_to_file(self) -> None:
+        # Collect data to store in one array
+        all_data = np.zeros((self.N, self.time_steps, 8))
+        all_data[:, :, 0] = self.p_hist
+        all_data[:, :, 1] = self.d_hist
+        all_data[:, :, 2] = self.m_hist
+        all_data[:, :, 3] = self.bank_fortune_hist
+        all_data[0, :, 4] = self.interest_rate_hist
+        all_data[1, :, 4] = self.interest_rate_PD_adjusted_hist
+        all_data[:, :, 5] = self.beta_hist
+        all_data[:, :, 6] = self.did_not_take_loan_hist
+        all_data[0, :-5, 7]  = np.array(self.first_derivative_hist)
+        all_data[1, :-5, 7]  = np.array(self.second_derivative_hist)
+
+        filename = Path.joinpath(self.dir_path_output, self.file_parameter_addon + ".npy")
+        np.save(filename, arr=all_data)
 
 
     def simulation(self, func_buyer_seller_idx):
@@ -270,12 +298,13 @@ class BankDebtDeflation():
                 buyer_idx, seller_idx = func_buyer_seller_idx()
                 self._transaction(buyer_idx, seller_idx)
 
-            # Pay interest to bank and check for bankruptcies
-            # self._pay_interest()
-            # self._company_bankruptcy_check()
-            self._pay_interest_and_check_bankruptcy()
+            # Pay interest to bank, take loan if in negative, and check for bankruptcies
+            self._pay_interest()
+            self._negative_money_to_loan()
+            self._company_bankruptcy_check()
             # Bank checks its growth and sets interest rate accordingly
             self._set_interest_rate(time_step=i)
+            self._adjust_interest_for_defualt_probability(time_step=i)
             # Store current values in history arrays
             self._store_values_in_hist_arrays(time_step=i)
 
@@ -283,15 +312,39 @@ class BankDebtDeflation():
         self._data_to_file()
 
 
+    def repeated_simulation(self, number_of_simulations: int, func_buyer_seller_idx: Callable[[], tuple[int, int]]):
+        # Want beta, interest rate and production over multiple simulations
+        beta_arr = np.empty((self.N, number_of_simulations))
+        interest_rate_arr = np.empty(number_of_simulations)
+        interest_rate_PD_adjusted_arr = np.empty(number_of_simulations)
+        production_arr = np.empty((self.N, number_of_simulations))
+        
+        for i in range(number_of_simulations):
+            self.simulation(func_buyer_seller_idx)
+            beta_arr[:, i] = self.beta
+            interest_rate_arr[i] = self.interest_rate
+            interest_rate_PD_adjusted_arr[i] = self.interest_rate_PD_adjusted
+            production_arr[:, i] = self.p
+            
+        # Store values
+        all_data = np.empty((self.N, number_of_simulations, 4))
+        all_data[:, :, 0] = beta_arr
+        all_data[:, :, 1] = interest_rate_arr
+        all_data[:, :, 2] = interest_rate_PD_adjusted_arr
+        all_data[:, :, 3] = production_arr
+        
+        filename = Path.joinpath(self.dir_path_output, "repeated_" + self.file_parameter_addon + ".npy")
+        np.save(filename, arr=all_data)
+    
+
 # Parameters
 N_companies = 100
 time_steps = 5000
-alpha = 0.15
+alpha = 0.05
 interest_rate_change_size = 0.05
 beta_mutation_size = 0.08
-beta_update_method = "random"  # "production" or "random"
+beta_update_method = "production"  # "production" or "random". Production chooses the beta value of the company with the highest production, random chooses a random beta value from the surviving companies.
 derivative_order = 2
-N_interest_update = 1
 
 if __name__ == "__main__":
     print("You ran the wrong script :)")
