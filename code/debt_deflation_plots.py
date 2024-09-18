@@ -160,7 +160,7 @@ class DebtDeflationVisualization():
         # Figure setup
         ax0.set(ylabel="$", title="Production", yscale=scale)
         ax1.set(ylabel="$", title="Debt", yscale=scale)
-        ax2.set(ylabel="$", xlabel="Time", title="Money", yscale="linear")  # Money can go negative
+        ax2.set(ylabel="$", xlabel="Time", title="Money", yscale=scale) 
         
         # Display parameter values
         self._add_parameters_text(ax0)
