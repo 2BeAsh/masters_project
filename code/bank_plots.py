@@ -29,7 +29,8 @@ class BankVisualization(DebtDeflationVisualization):
         self.debt = data_all[:, :, 1]
         self.money = data_all[:, :, 2] 
         self.bank_fortune = data_all[0, :, 3]  # Identical for all N companies on the 0-axis, so choose one
-        self.interest_rate = data_all[0, :, 4]  # Identical for all N companies on the 0-axis, so choose one
+        self.interest_rate = data_all[0, :, 4]
+        self.interest_rate_PD_adjusted = data_all[1, :, 4]
         self.beta = data_all[:, :, 5]  
         self.did_not_take_loan = data_all[0, :, 6]  # Identical for all N companies on the 0-axis, so choose one
         self.first_derivative = data_all[0, :, 7]
@@ -68,14 +69,34 @@ class BankVisualization(DebtDeflationVisualization):
         result.append(count if sign > 0 else -count)
         return result
 
-        
+    
     def plot_bank_fortune(self):
+        fig, ax = plt.subplots()
+
+        # Bank fortune 
+        # To plot in log, plot negative and positive values separately, and plot abs(negative). 
+        mask_neg_fortune = self.bank_fortune < 0
+        mask_pos_fortune = self.bank_fortune > 0
+        ax.plot(self.time_vals[mask_neg_fortune], np.abs(self.bank_fortune[mask_neg_fortune]), ".", color="red", label="abs(F<0)", alpha=0.9)
+        ax.plot(self.time_vals[mask_pos_fortune], self.bank_fortune[mask_pos_fortune], ".", color="green", label="F>0", alpha=0.9)
+
+        # Axis setup
+        ax.set(ylabel="Log \$", title="Bank fortune", yscale="log")
+        ax.grid()
+        ax.legend(ncols=2, bbox_to_anchor=(0.5, 0.95), loc="lower center", fontsize=8)
+        
+        # Text Parameters, save and show
+        self._add_parameters_text(ax) 
+        self._save_fig(fig, name="bankfortune")
+        if self.show_plots: plt.show()
+
+        
+    def plot_bank_fortune_components(self):
         fig, ax = plt.subplots()
         
         # Get total debt over time
         debt_summed = np.sum(self.debt, axis=0) 
         
-        # Fortune - Plot the two terms of fortune i.e. bank money and debt
         # Money
         mask_neg_money = self.bank_money < 0
         mask_pos_money = self.bank_money > 0
@@ -84,20 +105,14 @@ class BankVisualization(DebtDeflationVisualization):
 
         # Debt
         ax.plot(self.time_vals, debt_summed, label="Debt", marker=".", markersize=2)
-        
-        # Bank fortune 
-        mask_neg_fortune = self.bank_fortune < 0
-        mask_pos_fortune = self.bank_fortune > 0
-        ax.plot(self.time_vals[mask_neg_fortune], np.abs(self.bank_fortune[mask_neg_fortune]), "x", color="darkred", label="abs(F<0)", alpha=0.9)
-        ax.plot(self.time_vals[mask_pos_fortune], self.bank_fortune[mask_pos_fortune], "x", color="darkgreen", label="F>0", alpha=0.9, markersize=1.5)
-        
+                
         # Axis setup
-        ax.set(ylabel="Log \$", title="Bank fortune and its components", yscale="log")
+        ax.set(ylabel="Log \$", title="Bank fortune components", yscale="log")
         ax.grid()
         ax.legend(ncols=5, bbox_to_anchor=(0.5, 0.95), loc="lower center", fontsize=5)
         
         self._add_parameters_text(ax)
-        self._save_fig(fig, name="bankfortune")
+        self._save_fig(fig, name="bankfortune_components")
         if self.show_plots: plt.show()
         
         
@@ -110,7 +125,10 @@ class BankVisualization(DebtDeflationVisualization):
         fig, (ax, ax1, ax2) = plt.subplots(nrows=3)
         
         # Plots
-        ax.plot(self.time_vals, self.interest_rate)
+        # ax: Interest rate and adjusted interest rate
+        ax.plot(self.time_vals, self.interest_rate, "-", label=r"$r$")
+        ax.plot(self.time_vals, self.interest_rate_PD_adjusted, "--", label=r"$r$ adjusted")
+        
         ax1.plot(self.time_vals, beta_mean)
         im = ax2.imshow(self.beta, cmap="hot", vmin=beta_min, vmax=beta_max, aspect="auto", origin="lower")
         
@@ -307,11 +325,51 @@ class BankVisualization(DebtDeflationVisualization):
         # Save and show plot
         self._save_fig(fig, name="consecutive_counts")
         if show_plots: plt.show()
+        
+    
+    def plot_(self):
+        # Load data
+        filename = Path.joinpath(self.dir_path_output, "repeated_" + self.filename + ".npy")
+        data = np.load(filename)
+        beta_arr = data[:, :, 0]  # Shape (companies, repeats, variable)
+        interest_rate_arr = data[:, :, 1]
+        interest_rate_PD_adjusted_arr = data[:, :, 2]
+        production_arr = data[:, :, 3]
+        # Take mean over companies
+        beta_mean = np.mean(beta_arr, axis=0)
+        interest_rate_mean = np.mean(interest_rate_arr, axis=0)
+        interest_rate_PD_adjusted_mean = np.mean(interest_rate_PD_adjusted_arr, axis=0)
+        production_mean = np.mean(production_arr, axis=0)
+        
+        # Std over companies
+        beta_std = np.std(beta_arr, axis=0, ddof=1)
+        interest_rate_std = np.std(interest_rate_arr, axis=0, ddof=1)
+        interest_rate_PD_adjusted_std = np.std(interest_rate_PD_adjusted_arr, axis=0, ddof=1)
+        production_std = np.std(production_arr, axis=0, ddof=1)
+        
+        # Create figure
+        fig, (ax, ax1) = plt.subplots(nrows=2)
+        
+        # Plots
+        ax.errorbar(beta_mean, production_mean, xerr=beta_std, yerr=production_std, fmt="o")
+        ax1.errorbar(beta_mean, interest_rate_mean, xerr=beta_std, yerr=interest_rate_std, fmt="o")
+        
+        # Axis setup
+        ax.set(ylabel="Production", title=r"Production vs $\beta$")
+        ax1.set(ylabel="Interest rate", xlabel=r"$\beta$", title=r"Interest rate vs $\beta$")
+        
+        # Parameters
+        self._display_parameters(ax)
+        
+        # Save and show fig        
+        self._save_fig(fig, name="variable_dependence")
+        if self.show_plots: plt.show()
+        
 
 
 if __name__ == "__main__": 
     run_wm = True  # Well mixed
-    show_plots = False
+    show_plots = True
     animate = False
     scale = "log"
         
