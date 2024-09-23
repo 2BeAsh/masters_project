@@ -7,7 +7,9 @@ import functools
 from pathlib import Path
 # My files
 import general_functions  # Own library, here only used for matplotlib styling
-from bank_well_mixed import filename_parameter_addon
+from bank_well_mixed import filename_parameter_addon as filename_parameter_addon_wm
+from bank_1d import filename_parameter_addon as filename_parameter_addon_1d
+from bank_network import filename_parameter_addon as filename_parameter_addon_network
 from debt_deflation_plots import DebtDeflationVisualization
 from tqdm import tqdm
 
@@ -33,8 +35,8 @@ class BankVisualization(DebtDeflationVisualization):
         self.interest_rate_PD_adjusted = data_all[1, :, 4]
         self.beta = data_all[:, :, 5]  
         self.did_not_take_loan = data_all[0, :, 6]  # Identical for all N companies on the 0-axis, so choose one
-        self.first_derivative = data_all[0, :, 7]
-        self.second_derivative = data_all[1, :, 7]
+        self.first_derivative = data_all[0, :, 7]  # First 5 values are always 1
+        self.second_derivative = data_all[1, :, 7]  # First 5 values are always 1
         
         # Derivates of data
         self.bank_money = self.bank_fortune - np.sum(self.debt, axis=0)
@@ -128,20 +130,25 @@ class BankVisualization(DebtDeflationVisualization):
         # ax: Interest rate and adjusted interest rate
         ax.plot(self.time_vals, self.interest_rate, "-", label=r"$r$")
         ax.plot(self.time_vals, self.interest_rate_PD_adjusted, "--", label=r"$r$ adjusted")
-        
-        ax1.plot(self.time_vals, beta_mean)
+        # ax 1: Mean beta
+        ax1.plot(self.time_vals, beta_mean, color="black")
+        # ax 2: Beta evolution
         im = ax2.imshow(self.beta, cmap="hot", vmin=beta_min, vmax=beta_max, aspect="auto", origin="lower")
         
         # Colorbar
         fig.colorbar(im)
         
         # Axis setup
-        ax.set(ylabel="Interest rate", xlabel="Time", title="Interest rate", xlim=(0, self.time_steps))
+        ax.set(ylabel="Interest rate", xlabel="Time", title="Interest rate", xlim=(0, self.time_steps), yscale="log")
         ax1.set(ylabel=r"Mean $\beta$", xlabel="Time", title=r"Company Mean $\beta$", xlim=(0, self.time_steps))
         ax2.set(ylabel="Companies", xlabel="Time", title=r"$\beta$ evolution")
-        
+        # Ticks
+        ax.set_yticks([1e-2, 1e-1, 1e0])
+        # Grid
         ax.grid()
         ax1.grid()
+        # Legend
+        ax.legend(ncols=2, bbox_to_anchor=(0.5, 0.75), loc="lower center", fontsize=6)
         # Parameters
         self._add_parameters_text(ax)
         # Save and show fig
@@ -366,16 +373,35 @@ class BankVisualization(DebtDeflationVisualization):
         if self.show_plots: plt.show()
         
 
-
 if __name__ == "__main__": 
-    run_wm = True  # Well mixed
-    show_plots = True
+    run_wm = True # Well mixed
+    run_1d = False  # 1D
+    run_nw = False  # Network
+    show_plots = False
     animate = False
     scale = "log"
         
     if run_wm:
         print("Plotting Well Mixed")
-        visualize = BankVisualization(filename_parameter_addon, show_plots)
+        visualize = BankVisualization(filename_parameter_addon_wm, show_plots)
+        
+        # visualize.plot_companies(N_plot=4, scale=scale)
+        visualize.plot_means(scale)
+        # visualize.final_time_values(scale)
+        visualize.final_time_size_dist()
+        visualize.plot_bank_fortune()
+        visualize.plot_beta_evolution()
+        # visualize.plot_did_not_take_loan()
+        # visualize.plot_derivatives()
+        # visualize.plot_consecutive_counts()
+        
+        if animate:
+            visualize.animate_values(scale)
+            # visualize.animate_beta_evolution()
+    
+    if run_1d:
+        print("Plotting 1D")
+        visualize = BankVisualization(filename_parameter_addon_1d, show_plots)
         
         visualize.plot_companies(N_plot=4, scale=scale)
         visualize.plot_means(scale)
@@ -387,6 +413,24 @@ if __name__ == "__main__":
         visualize.plot_derivatives()
         visualize.plot_consecutive_counts()
         
+        if animate:
+            visualize.animate_values(scale)
+            # visualize.animate_beta_evolution()
+
+    if run_nw: 
+        print("Plotting Network")
+        visualize = BankVisualization(filename_parameter_addon_network, show_plots)
+
+        visualize.plot_companies(N_plot=4, scale=scale)
+        visualize.plot_means(scale)
+        visualize.final_time_values(scale)
+        visualize.final_time_size_dist()
+        visualize.plot_bank_fortune()
+        visualize.plot_beta_evolution()
+        visualize.plot_did_not_take_loan()
+        visualize.plot_derivatives()
+        visualize.plot_consecutive_counts()
+
         if animate:
             visualize.animate_values(scale)
             # visualize.animate_beta_evolution()
