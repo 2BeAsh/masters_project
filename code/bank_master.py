@@ -259,7 +259,7 @@ class BankDebtDeflation():
                 self.interest_rate = self.interest_rate * (1 - self.interest_rate_change_size)
             
 
-    def _adjust_interest_for_defualt_probability(self, time_step):
+    def _adjust_interest_for_default_probability(self, time_step):
         # Calculate mean default probability of the last 10 time steps and find the probability of default adjusted interest rate
         mean_length = 10
         if time_step >= mean_length:
@@ -325,7 +325,7 @@ class BankDebtDeflation():
             self._company_bankruptcy_check()
             # Bank checks its growth and sets interest rate accordingly
             self._set_interest_rate(time_step=i)
-            self._adjust_interest_for_defualt_probability(time_step=i)
+            self._adjust_interest_for_default_probability(time_step=i)
             # Store current values in history arrays
             self._store_values_in_hist_arrays(time_step=i)
 
