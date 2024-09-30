@@ -35,7 +35,7 @@ class BankDebtDeflation():
         self.dir_path_image = Path.joinpath(self.dir_path, "image_bank")
         self.file_parameter_addon_base = f"Steps{self.time_steps}_N{self.N}_alpha{self.alpha}_dr{interest_rate_change_size}_dbeta{beta_mutation_size}_betaUpdate{beta_update_method}_deriv{derivative_order}"
 
-        # np.random.seed(1)  # For variable control
+        np.random.seed(1)  # For variable control
         
         # Parameters values are initialized in _initialize_market
 
@@ -264,8 +264,9 @@ class BankDebtDeflation():
         mean_length = 10
         if time_step >= mean_length:
             prob_default = np.mean(self.N_bankrupt_hist[time_step - mean_length: time_step - 1]) / self.N
-            prob_default = np.min((prob_default, 0.95))  # Ensure probability is not above 1
+            prob_default = np.min((prob_default, 0.99))  # Ensure probability is not above 1
             self.interest_rate_PD_adjusted =  self.interest_rate * prob_default /((1 + self.interest_rate) * (1 - prob_default)) # (1 + self.interest_rate) / (1 - prob_default) - 1
+            # self.interest_rate_PD_adjusted = (1 + self.interest_rate) / (1 - prob_default) - 1
         # self.interest_rate_PD_adjusted = self.interest_rate  # OBS only use this if want to exclude the default probability adjustment
         self.interest_rate_PD_adjusted = np.max((self.interest_rate_PD_adjusted, 1e-3))
         
@@ -360,7 +361,7 @@ class BankDebtDeflation():
 
 # Parameters
 N_companies = 100
-time_steps = 7000
+time_steps = 5000
 alpha = 0.1
 interest_rate_change_size = 0.05
 beta_mutation_size = 0.1
