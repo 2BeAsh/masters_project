@@ -138,7 +138,7 @@ class BankVisualization(DebtDeflationVisualization):
         # ax 1: Mean beta
         ax1.plot(self.time_values, beta_mean, color="black")
         # ax 2: Beta evolution
-        im = ax2.imshow(self.beta, cmap="hot", vmin=beta_min, vmax=beta_max, aspect="auto", origin="lower")
+        im = ax2.imshow(self.beta, cmap="hot", vmin=beta_min, vmax=beta_max, aspect="auto", origin="lower", interpolation="none")
         
         # Colorbar
         fig.colorbar(im)
