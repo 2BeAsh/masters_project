@@ -1,11 +1,11 @@
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
-from no_money_master import BankNoMoney, time_steps, number_of_companies, time_steps, money_to_production_efficiency, interest_rate_change_size, beta_mutation_size, beta_update_method
+from no_money_master import BankNoMoney, time_steps, number_of_companies, time_steps, money_to_production_efficiency, interest_rate_change_size, beta_mutation_size, beta_update_method, interest_update_method
 
 
 class BankWellMixed(BankNoMoney):
-    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size: float, beta_mutation_size: float, beta_update_method: str, time_steps: int):
+    def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size: float, beta_mutation_size: float, beta_update_method: str, interest_update_method: str, time_steps: int):
         """_summary_
 
         Args:
@@ -15,7 +15,7 @@ class BankWellMixed(BankNoMoney):
             time_steps (int): _description_
         """
         # Get master methods
-        super().__init__(number_of_companies, money_to_production_efficiency, interest_rate_change_size, beta_mutation_size, beta_update_method, time_steps)
+        super().__init__(number_of_companies, money_to_production_efficiency, interest_rate_change_size, beta_mutation_size, beta_update_method, interest_update_method, time_steps)
         
         
     def _buyer_seller_idx_uniform(self) -> tuple:
@@ -42,8 +42,8 @@ bank_wellmixed = BankWellMixed(number_of_companies=number_of_companies,
                                interest_rate_change_size=interest_rate_change_size, 
                                beta_mutation_size=beta_mutation_size,
                                beta_update_method=beta_update_method,
+                               interest_update_method=interest_update_method,
                                time_steps=time_steps)
-
 
 if __name__ == "__main__":
     bank_wellmixed.run_store_values()    
