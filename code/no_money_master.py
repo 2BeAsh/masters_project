@@ -9,8 +9,11 @@ from itertools import product
 class BankNoMoney():
     def __init__(self, number_of_companies: int, money_to_production_efficiency: float,
                  interest_rate_change_size: float, beta_mutation_size: float, beta_update_method: str,
-                 time_steps: int) -> None:
-
+                 interest_update_method: str, time_steps: int) -> None:
+        
+        # Check if given parameters are valid
+        assert interest_update_method in ["bank_debt", "allow_negative", "random_walk", "loan_supply_demand"], "Invalid free interest update method"
+        
         # Local paths for saving files
         file_path = Path(__file__)
         self.dir_path = file_path.parent
@@ -28,10 +31,14 @@ class BankNoMoney():
         }
         self.first_group_params = f"Steps{self.param_values['time_steps'][0]}_N{self.param_values['number_of_companies'][0]}_alpha{self.param_values['money_to_production_efficiency'][0]}_rho{self.param_values['interest_rate_change_size'][0]}_dbeta{self.param_values['beta_mutation_size'][0]}_betaUpdate{self.param_values['beta_update_method'][0]}"
 
-        self.one_step_model = True
+        # Variables not meant for iterations
+        self.interest_update_method = interest_update_method
+        
+        # Set seed
+        np.random.seed(42)
+        
 
-
-    def _initialize_market(self) -> None:
+    def _initialize_market_variables(self) -> None:
         # Company variables
         self.p = np.ones(self.N)
         self.d = np.zeros(self.N)
@@ -53,6 +60,9 @@ class BankNoMoney():
         self.d_bank_hist = np.empty(self.time_steps)
         self.interest_rate_hist_free = np.empty(self.time_steps)
         self.interest_rate_hist = np.empty(self.time_steps)
+        
+        # Other
+        self.supply_demand_list = []
 
         # Set initial values
         self.p_hist[:, 0] = self.p
@@ -66,8 +76,8 @@ class BankNoMoney():
 
     def _transaction(self, buyer_idx: int, seller_idx: int) -> None:
         # Buyer takes loan
-        interest_rate_no_zero = np.sign(self.interest_rate) * np.max((np.abs(self.interest_rate), 1e-3))  # Ensure interest rate is not zero
-        delta_debt = np.min((self.beta[buyer_idx] * self.p[buyer_idx] / interest_rate_no_zero - self.d[buyer_idx], self.p[seller_idx]))
+        buyer_loan_max = self.beta[buyer_idx] * self.p[buyer_idx] / self.interest_rate - self.d[buyer_idx]
+        delta_debt = np.min((buyer_loan_max, self.p[seller_idx]))
         delta_debt = np.max((delta_debt, 0))  # Ensure positive
 
         # Update values
@@ -75,6 +85,9 @@ class BankNoMoney():
         # self.d_bank -= delta_debt  # bank gives loan and thus has a claim (negative loan) on the buyer that just took a loan  # OBS remove comment
         self.d[seller_idx] -= delta_debt  # seller gains money (negative loan)
         self.p[buyer_idx] += self.alpha * delta_debt  # buyer uses money spendt to raise production
+        
+        # Record the difference between the max buyer loan and p[seller_idx]
+        self.supply_demand_list.append(buyer_loan_max - self.p[seller_idx])
 
 
     def _pay_interest(self) -> None:
@@ -130,25 +143,46 @@ class BankNoMoney():
 
     def _update_free_interest(self, time_step: int) -> None:
         delta_bank_debt = self.d_bank - self.d_bank_hist[time_step-1]
-        
         delta_debt = self.d.sum() - self.d_hist[:, time_step-1].sum()  # Positive means more money to the bank, negative means bank loses money
-
-        rho = self.rho
-        if self.one_step_model and self.d.sum() < 0:
-            rho = - rho
         
-        if delta_debt > 0:  # Bank gains money, decrease interest rate
-            self.interest_rate_free -= rho
-        else:  # Bank loses money, increase interest rate
-            self.interest_rate_free += rho
+        negative_bias_correction = 1 / (1 - self.rho)
+
+        # One step model
+        if self.interest_update_method == "allow_negative":
+            rho = self.rho
+            if self.one_step_model and self.d.sum() < 0:
+                rho = - rho
             
-        # # Random walk
-        # q = np.random.uniform(low=0, high=1)
-        # if q < 0.5:
-        #     self.interest_rate_free += self.rho
-        # else:
-        #     self.interest_rate_free -= self.rho
-        # self.interest_rate_free = np.max((self.interest_rate_free, 0.05))
+            if delta_debt > 0:  # Bank gains money, decrease interest rate
+                self.interest_rate_free -= rho
+            else:  # Bank loses money, increase interest rate
+                self.interest_rate_free += rho
+        
+        elif self.interest_update_method == "bank_debt":
+            if delta_debt > 0:  # Bank gains money, decrease interest rate
+                self.interest_rate_free *= (1 - self.rho)
+            else:  # Bank loses money, increase interest rate
+                self.interest_rate_free *= (1 + negative_bias_correction * self.rho)
+                
+        elif self.interest_update_method == "random_walk":
+            q = np.random.uniform(low=0, high=1)
+            if q < 0.5:
+                self.interest_rate_free += self.rho
+            else:
+                self.interest_rate_free -= self.rho
+                
+        elif self.interest_update_method == "loan_supply_demand":
+            # Supply and demand is determined by the number of people who could and could not take full loan
+            # The median of the supply_demand_list is used to determine the direction of the interest rate change
+            median_supply_demand = np.median(self.supply_demand_list)
+            # If the median is positive, the buying power is too strong (i.e. the demand is too high), so the interest rate should increase and vice versa
+            
+            if median_supply_demand > 0:
+                self.interest_rate_free *= (1 + negative_bias_correction * self.rho)
+            else:
+                self.interest_rate_free *= (1 - self.rho)
+            # Reset the supply demand list
+            self.supply_demand_list = []
 
 
     def _adjust_interest_for_default_probability(self) -> None:
@@ -156,8 +190,8 @@ class BankNoMoney():
         # Calculate probability of default
         self.PD = np.clip(a=self.went_bankrupt / self.N, a_min=0.01, a_max=0.99)  # Prevent division by zero in next step and that the interest rate becomes 0
 
-        one_step_model = True
-        if one_step_model:
+        self.one_step_model = True
+        if self.one_step_model:
             # One step interest formula adjustement
             self.interest_rate = (1 + self.interest_rate_free) / (1 - self.PD) - 1
         else:    
@@ -169,7 +203,7 @@ class BankNoMoney():
 
     def simulation(self, func_buyer_seller_idx) -> None:
         # Initialize
-        self._initialize_market()
+        self._initialize_market_variables()
         self._initialize_hist_arrays()
 
         # Run simulation
@@ -258,15 +292,16 @@ class BankNoMoney():
 
 # Define variables for other files to use
 number_of_companies = 100
-time_steps = 1000
+time_steps = 100
 money_to_production_efficiency = 0.05  # Alpha
 interest_rate_change_size = 0.01
 beta_mutation_size = 0.1
 beta_update_method = "production"  # "production" or "random"
+interest_update_method = "random_walk"  # "allow_negative", "bank_debt", "random_walk", "loan_supply_demand"
 
 # Other files need some variables
 bank_no_money = BankNoMoney(number_of_companies, money_to_production_efficiency, interest_rate_change_size,
-            beta_mutation_size, beta_update_method, time_steps)
+            beta_mutation_size, beta_update_method, interest_update_method, time_steps)
 
 first_group_params = bank_no_money.first_group_params
 dir_path_output = bank_no_money.dir_path_output
