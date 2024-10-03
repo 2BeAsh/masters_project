@@ -6,7 +6,7 @@ from typing import Callable
 
 class BankDebtDeflation():
     def __init__(self, number_of_companies: int, money_to_production_efficiency: float, interest_rate_change_size=0.01, 
-                 beta_mutation_size=0.05, beta_update_method="production", derivative_order=2, time_steps=1000):
+                 beta_mutation_size=0.05, beta_update_method="production", interest_update_method=2, time_steps=1000):
         """Initializer. Children must define the following:
             self.file_parameter_addon
 
@@ -17,7 +17,7 @@ class BankDebtDeflation():
         """
         # Check different input values are correct
         assert beta_update_method in ["production", "random"]
-        assert derivative_order in [1, 2]
+        assert interest_update_method in [1, 2, "supply_demand"]
         
         # Set parameters
         self.N = number_of_companies
@@ -25,31 +25,35 @@ class BankDebtDeflation():
         self.interest_rate_change_size = interest_rate_change_size
         self.beta_mutation_size = beta_mutation_size
         self.beta_update_method = beta_update_method  # How new beta values are chosen
-        self.derivative_order = derivative_order  # Order of derivative used for interest rate adjustment
         self.time_steps = time_steps  # Steps taken in system evolution.
+        self.interest_update_method = interest_update_method
 
         # Local paths for saving files.
         file_path = Path(__file__)
         self.dir_path = file_path.parent
         self.dir_path_output = Path.joinpath(self.dir_path, "output")
         self.dir_path_image = Path.joinpath(self.dir_path, "image_bank")
-        self.file_parameter_addon_base = f"Steps{self.time_steps}_N{self.N}_alpha{self.alpha}_dr{interest_rate_change_size}_dbeta{beta_mutation_size}_betaUpdate{beta_update_method}_deriv{derivative_order}"
+        self.file_parameter_addon_base = f"Steps{self.time_steps}_N{self.N}_alpha{self.alpha}_dr{interest_rate_change_size}_dbeta{beta_mutation_size}_betaUpdate{beta_update_method}_interestUpdate{interest_update_method}"
 
-        np.random.seed(1)  # For variable control
+        # np.random.seed(1)  # For variable control
         
-        # Parameters values are initialized in _initialize_market
-
 
     def _initialize_market(self):
+        # Company variables
         self.p = np.ones(self.N) * 1.  # * 1. converts to float
         self.d = np.zeros(self.N) * 1.
         self.m = np.ones(self.N) * 1.
         self.beta = np.random.uniform(low=0, high=1, size=self.N)  # Risk factor in loans
+        
+        # Bank variables
         self.bank_money = 1  # Value of bank_money doesn't matter for derivatives 
         self.interest_rate = 0.1  # OBS might choose another value.
         self.interest_rate_PD_adjusted = self.interest_rate  # Assume no chance of bankruptcy at start
         self.interest_action = 1  # -1 means reduce, 1 means increase. Arbitrarly set to increase at start.
+
+        # Other variables
         self.did_not_take_loan = 0
+        self.supply_demand_list = []  # Record the difference between the potential max loan and p[seller_idx]        
 
 
     def _initialize_hist_arrays(self):
@@ -82,19 +86,29 @@ class BankDebtDeflation():
 
 
     def _take_loan(self, buyer_idx, seller_idx):
+        """Update the buyer's money to match the seller's production capacity. Increase in money is done at a cost of increasing debt.
+
+        Args:
+            buyer_idx (int): Index of buyer 
+            seller_idx (int): Index of seller
+        """
         # Establish loan boundaries and clip the smart loan to match the boundaries
         debt_max = self.p[seller_idx] - self.m[buyer_idx]  # No reason to go beyond the seller's production
-        debt_min = 0  # Cannot take negative debt
-        delta_debt = (self.beta[buyer_idx] * self.p[buyer_idx] + self.m[buyer_idx]) / self.interest_rate_PD_adjusted - self.d[buyer_idx]  # OBS has removed money from debt term
+        debt_min = 0.  # Cannot take negative debt
+        # delta_debt = (self.beta[buyer_idx] * self.p[buyer_idx] + self.m[buyer_idx]) / self.interest_rate_PD_adjusted - self.d[buyer_idx]  # Has money
+        delta_debt = (self.beta[buyer_idx] * self.p[buyer_idx]) / self.interest_rate_PD_adjusted - self.d[buyer_idx]  # OBS has removed money from debt term
         delta_debt_clipped = np.clip(a=delta_debt, a_min=debt_min, a_max=debt_max)
 
         # If debt == 0 (could be because non-clipped debt was negative), no loan was taken
-        if delta_debt_clipped == 0:
+        if delta_debt_clipped == 0.:
             self.did_not_take_loan += 1
         # Update values
         self.m[buyer_idx] += delta_debt_clipped
         self.d[buyer_idx] += delta_debt_clipped
         self.bank_money -= delta_debt_clipped
+        
+        # Record the difference between the max buyer loan and p[seller_idx]
+        self.supply_demand_list.append(delta_debt - self.p[seller_idx])  # Use pre-clipped value for potential max loan
 
 
     def _transaction(self, buyer_idx, seller_idx):
@@ -115,9 +129,9 @@ class BankDebtDeflation():
         """If any company has entered negative money, take a loan to correct it.
         """
         # Find companies with negative money
-        idx_negative_money = np.where(self.m < 0)
+        idx_negative_money = np.where(self.m <= 0)
         # Take debt to set money to zero
-        debt = np.abs(self.m[idx_negative_money]) + 0.1  # 0.1 is negligeable, but makes log-plotting prettier
+        debt = np.abs(self.m[idx_negative_money]) + 0.01  # 0.1 is negligeable, but makes log-plotting prettier
         # Update company money and debt values, and bank money
         self.m[idx_negative_money] += debt
         self.d[idx_negative_money] += debt
@@ -172,7 +186,7 @@ class BankDebtDeflation():
             else:
                 raise ValueError(f"{self.beta_update_method} is not a valid value for beta_update_method.")
         
-        self.beta[idx_new_companies] = np.maximum(self.beta[idx_new_companies], 0)  # Prevent companies from ~never taking loans
+        self.beta[idx_new_companies] = np.maximum(self.beta[idx_new_companies], 0.)  # Prevent companies from ~never taking loans
 
 
     def _company_bankruptcy_check(self) -> None:
@@ -191,7 +205,7 @@ class BankDebtDeflation():
             bankrupt_companies_with_positive_money_idx = np.where(self.m[bankrupt_idx] > 0)
             money_from_bankrupt_companies = self.m[bankrupt_idx][bankrupt_companies_with_positive_money_idx]
             debt_from_bankrupt_companies = self.d[bankrupt_idx][bankrupt_companies_with_positive_money_idx]
-            minimum_of_money_and_debt_from_bankrupt_companies = np.minimum(money_from_bankrupt_companies, debt_from_bankrupt_companies)
+            minimum_of_money_and_debt_from_bankrupt_companies = np.minimum(money_from_bankrupt_companies, debt_from_bankrupt_companies)  # Ensure company does not pay more than it owed
             self.bank_money += np.sum(minimum_of_money_and_debt_from_bankrupt_companies)
             
             # Record the fraction of money paid back to the bank compared to the original debt
@@ -237,36 +251,51 @@ class BankDebtDeflation():
         If the bank has experienced positive growth, it repeats the previus interest rate adjustment, but if the growth was negative, it does the opposite adjustment.
         """
         # Ensure enough data points for derivative. 5 is the minimum number of data points needed for the second derivative.
-        if time_step >= 5:  
+        if time_step >= 5 and (self.interest_update_method == 1 or self.interest_update_method == 2): 
             # Two possible options for defining growth: first derivative or second derivative. 
             # Use whichever is wanted, determinted by self.derivative_order. Both are stored for plotting.
             self.derivative_1st = self._first_deriv_backwards(time_step)
             self.derivative_2nd = self._second_deriv_backwards(time_step)
 
             deriv_list = [self.derivative_1st, self.derivative_2nd]
-            deriv = deriv_list[self.derivative_order - 1]  # -1 to match 0-indexing and derivative order
+            deriv = deriv_list[self.interest_update_method - 1]  # -1 to match 0-indexing and derivative order
 
             # Change interest action (i.e. swap from decrease to increase or vice versa) if derivative changes sign.            
             if self.interest_action != np.sign(deriv):
                 self.interest_action *= -1
+        
+        elif self.interest_update_method == "supply_demand":
+            median_supply_demand = np.median(self.supply_demand_list)
             
-            # Update interest rate to be a percent of its previous value
-            # Positive increasement are adjusted to match the inherent larger decreasements
-            if self.interest_action == 1:  
-                negative_bias_correction_factor = 1 / (1 - self.interest_rate_change_size)  # Found analytically
-                self.interest_rate = self.interest_rate * (1 + negative_bias_correction_factor * self.interest_rate_change_size)
-            else:  # self.interest_action == -1
-                self.interest_rate = self.interest_rate * (1 - self.interest_rate_change_size)
-            
+            if median_supply_demand > 0:  # Too much buying power (supply), increase interest rate
+                self.interest_action = 1
+            else:  # People cannot take the loans they want (too high demand), decrease interest rate
+                self.interest_action = -1
+                
+        else:
+            raise ValueError(f"Interest update method {self.interest_update_method} is not valid.")
+        
+        # Update interest rate to be a percent of its previous value
+        # Positive increasement are adjusted to match the inherent larger decreasements
+        if self.interest_action == 1:  
+            negative_bias_correction_factor = 1 / (1 - self.interest_rate_change_size)  # Found analytically
+            self.interest_rate = self.interest_rate * (1 + negative_bias_correction_factor * self.interest_rate_change_size)
+        else:  # self.interest_action == -1
+            self.interest_rate = self.interest_rate * (1 - self.interest_rate_change_size)
+        
 
     def _adjust_interest_for_default_probability(self, time_step):
         # Calculate mean default probability of the last 10 time steps and find the probability of default adjusted interest rate
         mean_length = 10
         if time_step >= mean_length:
+            prob_default_min = 1e-3  # Prevent turning everything to zero
+            prob_default_max = 0.99  # Prevent division by zero
             prob_default = np.mean(self.N_bankrupt_hist[time_step - mean_length: time_step - 1]) / self.N
-            prob_default = np.min((prob_default, 0.99))  # Ensure probability is not above 1
-            self.interest_rate_PD_adjusted =  self.interest_rate * prob_default /((1 + self.interest_rate) * (1 - prob_default)) # (1 + self.interest_rate) / (1 - prob_default) - 1
-            # self.interest_rate_PD_adjusted = (1 + self.interest_rate) / (1 - prob_default) - 1
+            prob_default = np.clip(a=prob_default, a_min=prob_default_min, a_max=prob_default_max)
+            
+            # self.interest_rate_PD_adjusted =  self.interest_rate * prob_default / ((1 + self.interest_rate) * (1 - prob_default))  # Infinite step formula
+            self.interest_rate_PD_adjusted = (1 + self.interest_rate) / (1 - prob_default) - 1  # One step formula
+        
         # self.interest_rate_PD_adjusted = self.interest_rate  # OBS only use this if want to exclude the default probability adjustment
         self.interest_rate_PD_adjusted = np.max((self.interest_rate_PD_adjusted, 1e-3))
         
@@ -361,12 +390,12 @@ class BankDebtDeflation():
 
 # Parameters
 N_companies = 100
-time_steps = 5000
+time_steps = 1001
 alpha = 0.1
 interest_rate_change_size = 0.05
 beta_mutation_size = 0.1
 beta_update_method = "random"  # "production" or "random". Production chooses the beta value of the company with the highest production, random chooses a random beta value from the surviving companies.
-derivative_order = 2
+interest_update_method = 2  # 1, 2, or "supply_demand". 1 uses the first derivative, 2 uses the second derivative, and "supply_demand" uses the median of the supply_demand_list to adjust the interest rate.
 
 if __name__ == "__main__":
-    print("You ran the wrong script :\)")
+    print("You ran the wrong script :D")
