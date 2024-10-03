@@ -143,7 +143,7 @@ class BankVisualization(DebtDeflationVisualization):
         ax1.set(ylabel=r"Mean $\beta$", xlabel="Time", title=r"Company Mean $\beta$", xlim=(0, self.time_steps))
         ax2.set(ylabel="Companies", xlabel="Time", title=r"$\beta$ evolution")
         # Ticks
-        ax.set_yticks([1e-2, 1e-1, 1e0])
+        # ax.set_yticks([1e-2, 1e-1, 1e0])  # OBS put back if interest rate is low
         # Grid
         ax.grid()
         ax1.grid()
@@ -377,15 +377,15 @@ if __name__ == "__main__":
     run_wm = True # Well mixed
     run_1d = False  # 1D
     run_nw = False  # Network
-    show_plots = True
-    animate = False
+    show_plots = False
+    animate = True
     scale = "log"
         
     if run_wm:
         print("Plotting Well Mixed")
         visualize = BankVisualization(filename_parameter_addon_wm, show_plots)
         
-        # visualize.plot_companies(N_plot=4, scale=scale)
+        visualize.plot_companies(N_plot=4, scale=scale)
         visualize.plot_means(scale)
         # visualize.final_time_values(scale)
         visualize.final_time_size_dist()
