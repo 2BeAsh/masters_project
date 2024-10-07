@@ -377,8 +377,8 @@ if __name__ == "__main__":
     run_wm = True # Well mixed
     run_1d = False  # 1D
     run_nw = False  # Network
-    show_plots = False
-    animate = True
+    show_plots = True
+    animate = False
     scale = "log"
         
     if run_wm:
