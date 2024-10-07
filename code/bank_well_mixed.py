@@ -48,7 +48,7 @@ bank_wellmixed = BankWellMixed(number_of_companies=N_companies,
                                interest_rate_change_size=interest_rate_change_size, 
                                beta_mutation_size=beta_mutation_size,
                                beta_update_method=beta_update_method,
-                               derivative_order=interest_update_method,
+                               interest_update_method=interest_update_method,
                                time_steps=time_steps)
 
 
