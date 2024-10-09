@@ -26,6 +26,7 @@ class BankWellMixed(BankNoMoney):
         Returns:
             tuple: buyer idx, seller idx
         """
+        
         seller_idx = np.random.randint(low=0, high=self.N)
         available_buyer_idx = np.arange(self.N)[np.arange(self.N) != seller_idx]
         buyer_idx = np.random.choice(a=available_buyer_idx)

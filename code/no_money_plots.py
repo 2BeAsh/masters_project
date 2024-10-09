@@ -133,7 +133,7 @@ class BankVisualization(DebtDeflationVisualization):
         fig.colorbar(im)
         
         # Axis setup
-        ax.set(ylabel="Log Interest rate", xlabel="Time", title="Free and adjusted interest rate", xlim=(0, self.time_steps), yscale="log")
+        ax.set(ylabel="Log Interest rate", xlabel="Time", title="Free and adjusted interest rate", xlim=(0, self.time_steps), yscale="log", yticks=[1e-3, 1e-2, 1e-1])
         ax1.set(ylabel=r"Log Mean $\beta$", xlabel="Time", title=r"Company Mean $\beta$", xlim=(0, self.time_steps), yscale="log")
         ax2.set(ylabel="Companies", xlabel="Time", title=r"$\beta$ evolution")
         # Grid
@@ -147,8 +147,40 @@ class BankVisualization(DebtDeflationVisualization):
         self._save_fig(fig, name="beta_evolution")
         if self.show_plots: plt.show()
         
-        
+
     def plot_buying_power(self):
+        # Calculate components of buying power
+        buyer_part = self.beta * self.production / self.interest_rate - self.debt
+        buyer_part_mean = np.mean(buyer_part, axis=0)  # Company mean
+        production_mean = np.mean(self.production, axis=0)
+        buying_power_norm = self.buying_power / self.N
+        buying_power_sum_of_parts = buyer_part_mean - production_mean
+        
+        # Create figure
+        fig, ax = plt.subplots()
+        
+        # Plot buyer part, production and buying power
+        ax.plot(self.time_values, buying_power_norm, ls="--", label="Buying power norm", alpha=0.7)
+        ax.plot(self.time_values, buyer_part_mean, ls="-", label=r"Mean $\beta p / r - d$", alpha=0.8)
+        ax.plot(self.time_values, production_mean, ls="dotted", label=r"Mean $p$", alpha=0.9)
+        ax.plot(self.time_values, buying_power_sum_of_parts, ls="dashdot", label=r"B sum of parts", alpha=0.9)
+        
+        # Axis setup 
+        ax.set(xlabel="Time", ylabel="$", title="Buying power and its components")#, yscale="log")
+        ax.grid()
+        
+        # Legend
+        ax.legend(bbox_to_anchor=(0.5, 0.9), loc="lower center", fontsize=10, ncols=3)
+        
+        # Parameters
+        self._add_parameters_text(ax)
+        
+        # save and show figure
+        self._save_fig(fig, "buying_power")
+        if self.show_plots: plt.show()
+        
+        
+    def plot_buying_power_full(self):
         """Plot the buying power together with its components i.e. beta, production, interest and debt.
         One subplot has only buying power, one has production and debt, and the last has beta and interest rate.
         """
@@ -252,31 +284,81 @@ class BankVisualization(DebtDeflationVisualization):
     
     
     def histograms(self):
+        """Standar histograms of the production and debt at the final time values"""
+        # Final time value of production and debt
+        production_final = self.production[:, -1]  # Production minimum value is 1
+        debt_final = self.debt[:, -1] + 1e-6  # Prevent zero values
+        debt_positive = debt_final[debt_final > 0]
+        debt_negative_abs = np.abs(debt_final[debt_final < 0])
+
+        # Binning
+        Nbins = int(np.sqrt(self.time_steps)) 
+        bins_p = 10 ** np.linspace(np.log10(1e0), np.log10(production_final.max() * 10), Nbins)  # Log x cuts off large values if max range value is not increased
+        bins_d = 10 ** np.linspace(np.log10(1e-6), np.log10(np.abs(debt_final).max() * 10), Nbins)
+        
+        # Create figure
+        fig, (ax, ax1) = plt.subplots(ncols=2)
+        
+        # ax: Production
+        counts_p, _, _ = ax.hist(production_final, bins=bins_p)
+        
+        # ax 1: Debt
+        # Plot positive and negative values separately
+        counts_d_pos, _, _ = ax1.hist(debt_positive, bins=bins_d, label="Positive debt", color="green", alpha=0.7)
+        counts_d_neg, _, _ = ax1.hist(debt_negative_abs, bins=bins_d, label="abs negative debt", color="red", alpha=0.7)
+
+        # Setup
+        ylim = (0, np.max((counts_p, counts_d_neg, counts_d_pos+1)))
+        ax.set(xlabel="Production", ylabel="Counts", title="Production values at final time", xscale="log", ylim=ylim)
+        ax1.set(xlabel="Debt", title="Debt values at final time", xscale="log", ylim=ylim)
+        ax1.legend(ncols=2, bbox_to_anchor=(0.5, 0.9), loc="lower center")
+        ax.grid()
+        ax1.grid()
+        
+        # Parameters text
+        self._add_parameters_text(ax)
+        
+        # Save and show figure
+        if self.show_plots: plt.show()
+        self._save_fig(fig, "hist")
+        
+    
+    def log_histograms(self):
         """Histograms of production, debt
-        """
-        
-        # Bin data of final times steps. 
-        p_final = self.production[:, -1]
-        d_final = self.debt[:, -1]
-        
+        """        
+        # Only do a histogram of the values at final time value
+        production_final = self.production[:, -1]
+        debt_final = self.debt[:, -1]
+
+        # Log Production bins
         Nbins = int(np.sqrt(self.time_steps))
-        p_min = self.production.min()
-        p_max = self.production.max()
-        bins_log = 10 ** np.linspace(np.log10(p_min), np.log10(p_max), Nbins)
+        bins_p = 10 ** np.linspace(np.log10(production_final.min()), np.log10(production_final.max()), Nbins)
+        # Log including negative values for debt
+        cut_off = 1e-2
+        debt_abs_max = np.max(np.abs(debt_final))
+
+        bins_d = np.logspace(np.log10(cut_off), np.log10(debt_abs_max), Nbins)
+        bins_d = np.concatenate((-bins_d[::-1], bins_d))
         
-        # Create figure 
-        fig, (ax1, ax2) = plt.subplots(nrows=2)
+        # Create figure
+        fig, (ax, ax1) = plt.subplots(ncols=2)
+        
+        # Production log x histogram
+        ax.hist(production_final, bins=bins_p)
+        ax.set(xlabel="Production", title="Final time production distribution", 
+               ylabel="Frequency", xscale="log")
 
-        # Plot histogram for p_final
-        ax1.hist(p_final, bins=bins_log)
-        ax1.set(xlabel="Production", ylabel="Frequency", xscale="log")
 
-        # Plot histogram for d_final
-        ax2.hist(d_final, bins=Nbins)
-        ax2.set(xlabel='Debt', ylabel='Frequency')
+        # Debt, log including negative values
+        debt_final = np.random.normal(loc=100, scale=1000, size=(self.time_steps))
+        ax1.hist(debt_final, bins=bins_d)
+        ax1.set_xscale("symlog", linthresh=cut_off)
+        
+        # Parameters text
+        self._add_parameters_text(ax)
 
-        # Adjust layout and show/save figure
-        self._save_fig(fig, "histograms")
+        # Save figure
+        self._save_fig(fig, "log_hist")
         if self.show_plots: plt.show()
     
     
@@ -286,10 +368,11 @@ if __name__ == "__main__":
     
     bank_vis = BankVisualization(group_name, show_plots)
     
-    # bank_vis.plot_companies(N_plot=4)
-    # bank_vis.plot_means()
-    # bank_vis.plot_beta_evolution()
-    # bank_vis.plot_buying_power()
+    print("Started plotting")
+    bank_vis.plot_companies(N_plot=4)
+    bank_vis.plot_means()
+    bank_vis.plot_beta_evolution()
+    bank_vis.plot_buying_power()
     bank_vis.histograms()
     
     print("Finished plotting")
