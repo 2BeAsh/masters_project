@@ -6,6 +6,7 @@ import matplotlib.animation as animation
 from pathlib import Path
 from tqdm import tqdm
 import h5py
+import functools
 
 # My files
 import general_functions  # Own library, here only used for matplotlib styling
@@ -14,13 +15,14 @@ from no_money_master import first_group_params, dir_path_output, dir_path_image
 
 
 class BankVisualization(DebtDeflationVisualization):
-    def __init__(self, group_name, show_plots):
+    def __init__(self, group_name, show_plots, add_parameter_text_to_plot):
         super().__init__(group_name, show_plots)
         
         
         # Variable instances
         self.group_name = group_name
         self.show_plots = show_plots
+        self.add_parameter_text_to_plot = add_parameter_text_to_plot
         
         self.dir_path_image = dir_path_image
         
@@ -40,6 +42,8 @@ class BankVisualization(DebtDeflationVisualization):
             self.interest_rate = data_group["interest_rate_hist"][:]
             self.interest_rate_free = data_group["interest_rate_hist_free"][:]
             self.d_bank = data_group["d_bank_hist"][:]
+            # Other
+            self.went_bankrupt = data_group["went_bankrupt"][:]
             # Attributes
             self.time_steps = data_group.attrs["time_steps"]
             self.N = data_group.attrs["N"]
@@ -69,7 +73,7 @@ class BankVisualization(DebtDeflationVisualization):
         ax1.set(ylabel="$", title="Debt")
         
         # Display parameter values
-        self._add_parameters_text(ax0)
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax0)
         
         fig.suptitle(f"First {N_plot} companies", fontsize=15, fontstyle="italic")
         # Save figure
@@ -105,12 +109,22 @@ class BankVisualization(DebtDeflationVisualization):
         ax.legend(ncols=3, bbox_to_anchor=(0.5, 1), loc="lower center", fontsize=10)
         
         # Display parameters
-        self._add_parameters_text(ax)
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
         
         # Save and show figure
         self._save_fig(fig, "means")
         if self.show_plots: plt.show()
-    
+
+
+    def plot_went_bankrupt(self):
+        fig, ax = plt.subplots()
+        ax.plot(self.time_values, self.went_bankrupt/self.N)
+        ax.set(ylabel="Fraction of companies", xlabel="Time", title="Fraction of companies that went bankrupt")
+        ax.grid()
+        if self.add_parameter_text_to_plot:  self._add_parameters_text(ax)
+        self._save_fig(fig, "went_bankrupt")
+        if self.show_plots: plt.show()
+
     
     def plot_beta_evolution(self):
         # Preprocess
@@ -142,7 +156,7 @@ class BankVisualization(DebtDeflationVisualization):
         # Legend
         ax.legend(ncols=2, bbox_to_anchor=(0.5, 0.75), loc="lower center", fontsize=6)
         # Parameters
-        self._add_parameters_text(ax)
+        if self.add_parameter_text_to_plot:  self._add_parameters_text(ax)
         # Save and show fig
         self._save_fig(fig, name="beta_evolution")
         if self.show_plots: plt.show()
@@ -153,14 +167,14 @@ class BankVisualization(DebtDeflationVisualization):
         buyer_part = self.beta * self.production / self.interest_rate - self.debt
         buyer_part_mean = np.mean(buyer_part, axis=0)  # Company mean
         production_mean = np.mean(self.production, axis=0)
-        buying_power_norm = self.buying_power / self.N
+        buying_power_norm = self.buying_power
         buying_power_sum_of_parts = buyer_part_mean - production_mean
         
         # Create figure
         fig, ax = plt.subplots()
         
         # Plot buyer part, production and buying power
-        ax.plot(self.time_values, buying_power_norm, ls="--", label="Buying power norm", alpha=0.7)
+        ax.plot(self.time_values, buying_power_norm, ls="--", label="Buying power", alpha=0.7)
         ax.plot(self.time_values, buyer_part_mean, ls="-", label=r"Mean $\beta p / r - d$", alpha=0.8)
         ax.plot(self.time_values, production_mean, ls="dotted", label=r"Mean $p$", alpha=0.9)
         ax.plot(self.time_values, buying_power_sum_of_parts, ls="dashdot", label=r"B sum of parts", alpha=0.9)
@@ -173,7 +187,7 @@ class BankVisualization(DebtDeflationVisualization):
         ax.legend(bbox_to_anchor=(0.5, 0.9), loc="lower center", fontsize=10, ncols=3)
         
         # Parameters
-        self._add_parameters_text(ax)
+        if self.add_parameter_text_to_plot:  self._add_parameters_text(ax)
         
         # save and show figure
         self._save_fig(fig, "buying_power")
@@ -222,7 +236,7 @@ class BankVisualization(DebtDeflationVisualization):
         ax1.legend()
         
         # Parameter values
-        self._add_parameters_text(ax)
+        if self.add_parameter_text_to_plot:  self._add_parameters_text(ax)
         # Show plot and Save figure
         self._save_fig(fig, "buying_power")
         if self.show_plots: plt.show()
@@ -277,7 +291,7 @@ class BankVisualization(DebtDeflationVisualization):
         ax2.legend()
         
         # Parameter values
-        self._add_parameters_text(ax)
+        if self.add_parameter_text_to_plot:  self._add_parameters_text(ax)
         # Show plot and Save figure
         self._save_fig(fig, "buying_power")
         if self.show_plots: plt.show()
@@ -316,63 +330,93 @@ class BankVisualization(DebtDeflationVisualization):
         ax1.grid()
         
         # Parameters text
-        self._add_parameters_text(ax)
+        if self.add_parameter_text_to_plot:  self._add_parameters_text(ax)
         
         # Save and show figure
         if self.show_plots: plt.show()
         self._save_fig(fig, "hist")
+
+
+    def animate_histograms(self):
+        time_i = time()
         
-    
-    def log_histograms(self):
-        """Histograms of production, debt
-        """        
-        # Only do a histogram of the values at final time value
-        production_final = self.production[:, -1]
-        debt_final = self.debt[:, -1]
+        debt_positive = self.debt[self.debt > 0]
+        debt_negative_abs = np.abs(self.debt[self.debt < 0])
 
-        # Log Production bins
-        Nbins = int(np.sqrt(self.time_steps))
-        bins_p = 10 ** np.linspace(np.log10(production_final.min()), np.log10(production_final.max()), Nbins)
-        # Log including negative values for debt
-        cut_off = 1e-2
-        debt_abs_max = np.max(np.abs(debt_final))
-
-        bins_d = np.logspace(np.log10(cut_off), np.log10(debt_abs_max), Nbins)
-        bins_d = np.concatenate((-bins_d[::-1], bins_d))
+        # Binning
+        Nbins = int(np.sqrt(self.time_steps)) 
+        p_min, p_max = 1e0, self.production.max()*10
+        d_min, d_max = 1e-6, np.abs(self.debt).max()*10
+        bins_p = 10 ** np.linspace(np.log10(1e0), np.log10(p_max), Nbins)  # Log x cuts off large values if max range value is not increased
+        bins_d = 10 ** np.linspace(np.log10(1e-6), np.log10(d_max), Nbins)
+        
+        bin_edges_p = 10 ** np.linspace(np.log10(p_min), np.log10(p_max), Nbins)
+        bin_edges_d = 10 ** np.linspace(np.log10(d_min), np.log10(d_max), Nbins)
         
         # Create figure
         fig, (ax, ax1) = plt.subplots(ncols=2)
+            
+        # Figure setup        
+        fig, (ax, ax1) = plt.subplots(ncols=2)
         
-        # Production log x histogram
-        ax.hist(production_final, bins=bins_p)
-        ax.set(xlabel="Production", title="Final time production distribution", 
-               ylabel="Frequency", xscale="log")
+        # Production
+        _, _, bar_container_p = ax.hist(self.production[:, 0], bin_edges_p)  # Initial histogram 
+        ax.set(xlim=(bin_edges_p[0], bin_edges_p[-1]), 
+               title="Time = 0", xscale="log")
 
-
-        # Debt, log including negative values
-        debt_final = np.random.normal(loc=100, scale=1000, size=(self.time_steps))
-        ax1.hist(debt_final, bins=bins_d)
-        ax1.set_xscale("symlog", linthresh=cut_off)
+        # Debt
+        _, _, bar_container_d = ax1.hist(self.debt[:, 0], bin_edges_d)  # Initial histogram 
+        ax.set(xlim=(bin_edges_d[0], bin_edges_d[-1]), 
+               title="Time = 0", xscale="log")
         
-        # Parameters text
-        self._add_parameters_text(ax)
+        # Text
+        if self.add_parameter_text_to_plot:  self._add_parameters_text(ax)
 
-        # Save figure
-        self._save_fig(fig, "log_hist")
-        if self.show_plots: plt.show()
-    
+        def animate(i, bar_container_p, bar_container_d):
+            """Frame animation function for creating a histogram."""
+            # Production
+            data_p = self.production[:, i]
+            n_p, _ = np.histogram(data_p, bin_edges_p)
+            for count, rect in zip(n_p, bar_container_p.patches):
+                rect.set_height(count)
+            
+            # Debt
+            data_d = debt_positive[:, i]
+            n_d, _ = np.histogram(data_d, bin_edges_d)
+            for count_d, rect_d in zip(n_d, bar_container_d.patches):
+                rect_d.set_height(count_d)
+            
+            # Title
+            ax.set_title(f"Time = {i}")
+            return bar_container_p.patches + bar_container_d.patches
+        
+        # Create the animation
+        # anim = functools.partial(animate, bar_container=bar_container)
+        # ani = animation.FuncAnimation(fig, anim, frames=self.time_steps, interval=1)
+        
+        # Save animation
+        # time_create_ani = time()  # Record time
+        # animation_name = Path.joinpath(self.dir_path_image, "size_distribution_animation_" + self.filename + ".mp4")
+        # ani.save(animation_name, fps=30)
+        
+        # Display times
+        # time_save_ani = time()
+        # print("Time creating animation: \t", time_create_ani - time_i)
+        # print("Time saving animation: \t", time_save_ani - time_create_ani)
+            
     
 if __name__ == "__main__":
     group_name = first_group_params
     show_plots = True
-    
-    bank_vis = BankVisualization(group_name, show_plots)
+    add_parameter_text_to_plot = True
+    bank_vis = BankVisualization(group_name, show_plots, add_parameter_text_to_plot)
     
     print("Started plotting")
     bank_vis.plot_companies(N_plot=4)
     bank_vis.plot_means()
+    bank_vis.plot_went_bankrupt()
     bank_vis.plot_beta_evolution()
-    bank_vis.plot_buying_power()
+    # bank_vis.plot_buying_power()
     bank_vis.histograms()
     
     print("Finished plotting")
