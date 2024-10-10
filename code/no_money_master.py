@@ -12,7 +12,7 @@ class BankNoMoney():
                  interest_update_method: str, time_steps: int) -> None:
         
         # Check if given parameters are valid
-        assert interest_update_method in ["bank_debt", "allow_negative", "random_walk", "loan_supply_demand", "buying_power"], "Invalid free interest update method"
+        assert interest_update_method in ["debt", "random_walk", "buying_power_median", "buying_power"], "Invalid free interest update method"
         
         # Local paths for saving files
         file_path = Path(__file__)
@@ -35,11 +35,10 @@ class BankNoMoney():
         self.interest_update_method = interest_update_method
         
         # Set seed
-        # np.random.seed(42)
+        np.random.seed(50)
         self.beta_min = 1e-2
         self.interest_rate_min = 1e-3
-        self.interest_rate_free_min = 1e-4
-        
+        self.interest_rate_free_min = 1e-3
         
 
     def _initialize_market_variables(self) -> None:
@@ -50,12 +49,13 @@ class BankNoMoney():
 
         # Bank variables
         self.d_bank = 0
-        self.interest_rate_free = 0.1
+        self.interest_rate_free = 0.05
         self.interest_rate = self.interest_rate_free
         self.went_bankrupt_list = [1]
         
         # Other
-        self.buying_power = 0
+        self.buying_power_list = []
+        self.buying_power = 0.1  # Only for the case buying_power method is not used
 
 
     def _initialize_hist_arrays(self) -> None:
@@ -73,7 +73,6 @@ class BankNoMoney():
         self.buying_power_hist = np.empty(self.time_steps)
         self.buyer_loan_size_hist = np.empty(self.time_steps)
         self.seller_loan_size_hist = np.empty(self.time_steps)
-
         
         # Set initial values
         self.p_hist[:, 0] = self.p
@@ -87,25 +86,24 @@ class BankNoMoney():
 
     def _transaction(self, buyer_idx: int, seller_idx: int) -> None:
         # Buyer takes loan
-        self.buyer_loan_max = self.beta[buyer_idx] * self.p[buyer_idx] / self.interest_rate - self.d[buyer_idx]
-        delta_debt = np.min((self.buyer_loan_max, self.p[seller_idx]))
+        # self.buyer_loan_max = self.beta[buyer_idx] * self.p[buyer_idx] / self.interest_rate - self.d[buyer_idx]
+        self.buyer_loan_max = (self.beta[buyer_idx] * self.p[buyer_idx] - self.interest_rate * self.d[buyer_idx]) / (self.interest_rate - self.alpha * self.beta[buyer_idx])
+        delta_debt = np.min((self.buyer_loan_max, self.p[seller_idx]))  # Ensure buyer does not take more than seller has
         delta_debt = np.max((delta_debt, 0))  # Ensure positive
 
         # Update values
         self.d[buyer_idx] += delta_debt  # buyer takes loan
-        # self.d_bank -= delta_debt  # bank gives loan and thus has a claim (negative loan) on the buyer that just took a loan  # OBS remove comment
         self.d[seller_idx] -= delta_debt  # seller gains money (negative loan)
         self.p[buyer_idx] += self.alpha * delta_debt  # buyer uses money spendt to raise production
         
         # Update value of buying_power
-        self.buying_power += self.buyer_loan_max - self.p[seller_idx]
+        self.buying_power_list.append(self.buyer_loan_max - self.p[seller_idx])
         
 
     def _pay_interest(self) -> None:
         # only Companies with positive debt pays interest to prevent companies from gaining money from having debt
         company_positive_debt = self.d > 0
         self.d[company_positive_debt] += self.d[company_positive_debt] * self.interest_rate
-        self.d_bank -= self.interest_rate * np.sum(self.d[company_positive_debt])
 
 
     def _mutate_beta(self, bankrupt_indices) -> None:
@@ -156,21 +154,10 @@ class BankNoMoney():
         
         negative_bias_correction = 1 / (1 - self.rho)
 
-        # One step model
-        if self.interest_update_method == "allow_negative":
-            rho = self.rho
-            if self.one_step_model and self.d.sum() < 0:
-                rho = - rho
-            
-            if delta_debt > 0:  # Bank gains money, decrease interest rate
-                self.interest_rate_free -= rho
-            else:  # Bank loses money, increase interest rate
-                self.interest_rate_free += rho
-        
-        elif self.interest_update_method == "bank_debt":
-            if delta_debt > 0:  # Bank gains money, decrease interest rate
+        if self.interest_update_method == "debt":
+            if self.d.sum() < 0:  # More money than debt. 
                 self.interest_rate_free *= (1 - self.rho)
-            else:  # Bank loses money, increase interest rate
+            else: 
                 self.interest_rate_free *= (1 + negative_bias_correction * self.rho)
                 
         elif self.interest_update_method == "random_walk":
@@ -180,24 +167,26 @@ class BankNoMoney():
             else:
                 self.interest_rate_free -= self.rho
                 
-        elif self.interest_update_method == "loan_supply_demand":
-            # Supply and demand is determined by the number of people who could and could not take full loan
-            
-            if self.buying_power > 0:
+        elif self.interest_update_method == "buying_power_median":
+            self.buying_power = np.median(self.buying_power_list)
+            if self.buying_power >= 0:
                 self.interest_rate_free *= (1 + negative_bias_correction * self.rho)
             else:
                 self.interest_rate_free *= (1 - self.rho)
-            # Reset the supply demand list
-            self.supply_demand_list = []
         
         elif self.interest_update_method == "buying_power":
-            rho = 2 * self.rho * np.tanh(self.buying_power / self.N)  # Allow larger changes (with factor 2) because tanh can reduce the effect
+            self.buying_power = np.mean(self.buying_power_list)
+            rho = 2 * self.rho * np.tanh(self.buying_power)  # Allow larger changes (with factor 2) because tanh can reduce the effect
             negative_bias_correction = 1 / (1 - rho)
             if self.buying_power > 0:
                 self.interest_rate_free *= (1 + negative_bias_correction * rho)
             else:
                 self.interest_rate_free *= (1 + rho)  # rho is negative, so don't need to change sign
-        
+
+        # Reset list
+        self.buying_power_list = []
+        self.buying_power = 0  # Reset buying power for next round
+            
         self.interest_rate_free = np.max((self.interest_rate_free, self.interest_rate_free_min))  # Ensure interest rate is not zero
             
             
@@ -229,7 +218,7 @@ class BankNoMoney():
         return term1 + term2 + term3
     
     
-    def _probability_of_default(self, T=12) -> None:
+    def _probability_of_default(self, T=24) -> None:
         """Calculate the probability a company defaults on a loan, looking at the last T time steps.
 
         Args:
@@ -245,7 +234,6 @@ class BankNoMoney():
         """
         # Calculate probability of default
         self._probability_of_default()
-        # self.PD = np.clip(a=self.went_bankrupt / self.N, a_min=0.01, a_max=0.99)  # Prevent division by zero in next step and that the interest rate becomes 0
 
         self.one_step_model = True
         if self.one_step_model:
@@ -253,11 +241,16 @@ class BankNoMoney():
             self.interest_rate = (1 + self.interest_rate_free) / (1 - self.PD) - 1
         else: 
             # Using the bisection method to find the root of the interest rate function
-            x0 = self.interest_rate  # Use the previous value as initial guess
-            loan_duration_steps = 100  # When a loan is expected to be paid back. Should be large (ideally larger than time_steps), since T = infinity in our case.
-            self.interest_rate = bisect(func=self._f_r, a=-0.99, b=25, args=(loan_duration_steps,))
+            loan_duration_steps = 40  # When a loan is expected to be paid back. Should be large (ideally larger than time_steps), since T = infinity in our case.
+            a = -0.99
+            b = 25
+            while np.sign(self._f_r(a, T=loan_duration_steps)) == np.sign(self._f_r(b, T=loan_duration_steps)):
+                a -= 0.1
+                b += 0.5
+            self.interest_rate = bisect(f=self._f_r, a=a, b=b, args=(loan_duration_steps,))
 
-        self.interest_rate = np.max((self.interest_rate, self.interest_rate_min)) 
+        # self.interest_rate = self.interest_rate_free
+        # self.interest_rate = np.max((self.interest_rate, self.interest_rate_min)) 
         
         
     def _store_values_in_hist_arrays(self, time_step: int) -> None:
@@ -285,14 +278,10 @@ class BankNoMoney():
                 buyer_idx, seller_idx = func_buyer_seller_idx()
                 self._transaction(buyer_idx, seller_idx)
 
-            # Pay interest
             self._pay_interest()
-            # Bankruptcy and beta mutation
             self._bankruptcy()
-            # Bank updates interest and takes probability of default into account
             self._update_free_interest(time_step=i)
             self._adjust_interest_for_default_probability()
-            # Store values
             self._store_values_in_hist_arrays(time_step=i)
 
 
@@ -350,6 +339,9 @@ class BankNoMoney():
                 group.create_dataset('interest_rate_hist_free', data=self.interest_rate_hist_free)
                 group.create_dataset('interest_rate_hist', data=self.interest_rate_hist)
                 
+                # Other
+                group.create_dataset("went_bankrupt", data=self.went_bankrupt_list[1:])  # There is an extra, initial point in the list
+                
                 # Save current variables as attributes
                 group.attrs['N'] = N
                 group.attrs['alpha'] = alpha
@@ -366,13 +358,13 @@ class BankNoMoney():
 
 
 # Define variables for other files to use
-number_of_companies = 125
-time_steps = 10000
-money_to_production_efficiency = 0.10  # alpha
+number_of_companies = 150
+time_steps = 8000
+money_to_production_efficiency = 0.15  # alpha
 interest_rate_change_size = 0.01  # rho
 beta_mutation_size = 0.15
 beta_update_method = "production"  # "production" or "random"
-interest_update_method = "buying_power"  # "allow_negative", "bank_debt", "random_walk", "loan_supply_demand", "buying_power"
+interest_update_method = "debt"  # "bank_debt", "random_walk", "loan_supply_demand", "buying_power"
 
 # Other files need some variables
 bank_no_money = BankNoMoney(number_of_companies, money_to_production_efficiency, interest_rate_change_size,
@@ -383,4 +375,4 @@ dir_path_output = bank_no_money.dir_path_output
 dir_path_image = bank_no_money.dir_path_image
 
 if __name__ == "__main__":
-    print("You ran the wrong script :\)")
+    print("You ran the wrong script :)")
