@@ -364,7 +364,7 @@ money_to_production_efficiency = 0.15  # alpha
 interest_rate_change_size = 0.01  # rho
 beta_mutation_size = 0.15
 beta_update_method = "production"  # "production" or "random"
-interest_update_method = "debt"  # "bank_debt", "random_walk", "loan_supply_demand", "buying_power"
+interest_update_method = "debt"  # "debt", "bank_debt", "random_walk", "loan_supply_demand", "buying_power"
 
 # Other files need some variables
 bank_no_money = BankNoMoney(number_of_companies, money_to_production_efficiency, interest_rate_change_size,
