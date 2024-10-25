@@ -1,10 +1,10 @@
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
-from p_limit_master import BankpLim, time_steps, number_of_companies, time_steps, money_to_production_efficiency, interest_rate_change_size
+from p_percent_master import BankpPercent, time_steps, number_of_companies, time_steps, money_to_production_efficiency, interest_rate_change_size
 
 
-class BankWellMixed(BankpLim):
+class BankWellMixed(BankpPercent):
     def __init__(self, number_of_companies, money_to_production_efficiency, interest_rate_change_size, time_steps):
         """_summary_
 

@@ -6,7 +6,7 @@ import h5py
 
 # My files
 import general_functions
-from p_limit_master import dir_path_output, dir_path_image, group_name
+from p_percent_master import dir_path_output, dir_path_image, group_name
 
 class BankVisualization(general_functions.PlotMethods):
     def __init__(self, group_name, show_plots, add_parameter_text_to_plot):
@@ -15,8 +15,10 @@ class BankVisualization(general_functions.PlotMethods):
         self.show_plots = show_plots
         self.add_parameter_text_to_plot = add_parameter_text_to_plot
         
+        # Check if the path to the image folder exists, otherwise create it
+        dir_path_image.mkdir(parents=True, exist_ok=True)
         self.dir_path_image = dir_path_image
-        self.data_path = dir_path_output / "p_limit_simulation_data.h5"
+        self.data_path = dir_path_output / "p_percent_simulation_data.h5"
         
         # Load data
         with h5py.File(self.data_path, "r") as file:
@@ -28,9 +30,8 @@ class BankVisualization(general_functions.PlotMethods):
             self.d = data_group["d"][:]
             
             # Bank
-            self.interest_rate_free = data_group["interest_rate_free"][:]
             self.interest_rate = data_group["interest_rate"][:]
-            self.loan_size = data_group["loan_size"][:]
+            self.p_change = data_group["average_p_change"][:]
             
             # Other
             self.went_bankrupt_list = data_group["went_bankrupt"][:]
@@ -111,7 +112,7 @@ class BankVisualization(general_functions.PlotMethods):
     def plot_interest_rates(self):
         # Plot the free interest rate and the interest rate together
         fig, ax = plt.subplots()
-        ax.plot(self.time_values, self.interest_rate_free, ls="--", label="Interest rate free")
+        ax.axhline(y=0.05, ls="--", label="Interest rate free")
         ax.plot(self.time_values, self.interest_rate, label="Interest rate")
         ax.axhline(y=self.alpha, color="grey", linestyle="--", label=r"$\alpha$")
         ax.set(xlabel="Time", ylabel="Interest rate")
@@ -166,36 +167,21 @@ class BankVisualization(general_functions.PlotMethods):
         if self.show_plots: plt.show()
         
         
-    def loan_size_over_time(self):
+    def plot_average_p_change(self):
         
-        # Create fig
-        fig, (ax, ax1, ax2) = plt.subplots(nrows=3)
-        
-        xlim = (0, self.time_steps+1)
-        
-        # Ax 0: Loan size imshow
-        im = ax.imshow(self.loan_size, aspect="auto", origin="lower", extent=[0, self.time_steps, 0, self.N], norm=SymLogNorm(linthresh=1), cmap="magma")
-        ax.set(ylabel="N", xlabel="Time", title="Loan size", xlim=xlim)
+        # Create figure
+        fig, ax = plt.subplots()
+        ax.plot(self.time_values, self.p_change, label="Average p change")
+        ax.set(xlabel="Time", ylabel="Log p change", yscale="log")
+        ax.grid()
+        self._add_legend(ax)
 
-        # Ax 1: Mean loan size
-        ax1.plot(self.time_values, np.mean(self.loan_size, axis=0))
-        ax1.set(xlabel="Time", ylabel="Log Mean loan size", title="Mean loan size over time", yscale="symlog", xlim=xlim)
-        plt.colorbar(im)
-        
-        # Ax 2: Loan size of four companies
-        # ax2.plot(self.time_values, self.loan_size[0, :], label="Company 0")
-        # ax2.plot(self.time_values, self.loan_size[10, :], label="Company 10")
-        # ax2.plot(self.time_values, self.loan_size[20, :], label="Company 20")
-        # ax2.plot(self.time_values, self.loan_size[30, :], label="Company 30")
-        ax2.plot(self.time_values, self.loan_size[:30, :].T, label="Company 30")
-        ax2.set(xlabel="Time", ylabel="Log Loan size", title="Loan size of four companies", xlim=xlim, yscale="log")
-        
-        # Parameters
+        # Add parameters
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
-        # Save
-        self._save_fig(fig, "loan_size")
+        # Save and show
+        self._save_fig(fig, "average_p_change")
         if self.show_plots: plt.show()
-
+        
         
 if __name__ == "__main__":
     show_plots = True
@@ -203,11 +189,11 @@ if __name__ == "__main__":
     bank_vis = BankVisualization(group_name, show_plots, add_parameter_text_to_plot)
     
     print("Started plotting")
-    # bank_vis.plot_companies(4)
+    bank_vis.plot_companies(4)
     bank_vis.plot_means()
     bank_vis.plot_number_of_bankruptcies()
     bank_vis.plot_interest_rates()
     bank_vis.size_distribution()
-    bank_vis.loan_size_over_time()
+    bank_vis.plot_average_p_change()
     
     print("Finished plotting")
