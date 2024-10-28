@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import SymLogNorm
 from pathlib import Path
 import h5py
+import functools
+import matplotlib.animation as animation
+
 
 # My files
 import general_functions
@@ -167,12 +170,55 @@ class BankVisualization(general_functions.PlotMethods):
         
         
     def plot_production(self):
+        p_final = self.p[:, -1]
+        bins = np.arange(-1, p_final.max() +1 , 1)
+        
         fig, ax  = plt.subplots()
-        ax.hist(self.p[:, -1], label="Production")
-        ax.set(xlabel="Production", ylabel="Counts", title="Production values at final time")
-        plt.show()
+        ax.hist(p_final, bins=bins)
+        ax.set(xlabel="(Number of employees)", ylabel="Counts", title="Employee distribution at final time")
+        ax.grid()
         
+        # Add parameters text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
+        # Save and show
+        self._save_fig(fig, "workforce")
+        if self.show_plots: plt.show()
+
+
+    def animate_size_distribution(self):
+        # Bin data
+        bins = np.arange(-1, int(self.p.max()) + 1, 1)
+
+        # Figure setup        
+        fig, ax = plt.subplots()
+        _, _, bar_container = ax.hist(self.p[:, 0], bins)  # Initial histogram 
+        ax.set(xlim=(bins[0], bins[-1]), title="Time = 0")
+        ax.grid()
+
+        # Text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
+
+        def animate(i, bar_container):
+            """Frame animation function for creating a histogram."""
+            # Histogram
+            data = self.p[:, i]
+            n, _ = np.histogram(data, bins)
+            for count, rect in zip(n, bar_container.patches):
+                rect.set_height(count)
+            
+            # Title
+            ax.set_title(f"Time = {i}")
+            return bar_container.patches
         
+        # Create the animation
+        anim = functools.partial(animate, bar_container=bar_container)  # Necessary when making histogram
+        ani = animation.FuncAnimation(fig, anim, frames=self.time_steps, interval=1)
+        
+        # Save animation
+        animation_name = Path.joinpath(self.dir_path_image, "workforce_animation" + self.filename + ".mp4")
+        ani.save(animation_name, fps=30)
+  
+  
 if __name__ == "__main__":
     show_plots = True
     add_parameter_text_to_plot = True
@@ -184,6 +230,7 @@ if __name__ == "__main__":
     # bank_vis.plot_number_of_bankruptcies()
     # bank_vis.plot_interest_rates()
     # bank_vis.size_distribution()
-    bank_vis.plot_production()
+    # bank_vis.plot_production()
+    bank_vis.animate_size_distribution()
     
     print("Finished plotting")
