@@ -97,13 +97,12 @@ class BankVisualization(general_functions.PlotMethods):
         
         
     def plot_number_of_bankruptcies(self):
-        
         # Create figure
         fig, ax = plt.subplots()
         ax.plot(self.time_values, self.went_bankrupt_list / self.N, label="Bankruptcies")
         
         # Setup
-        ax.set(xlabel="Time", ylabel="Fraction", title="Fraction of companies went bankruptcies")
+        ax.set(xlabel="Time", ylabel="Fraction", title="Fraction of companies went bankrupt")
         
         # Display parameters
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
@@ -116,7 +115,7 @@ class BankVisualization(general_functions.PlotMethods):
         # Plot the free interest rate and the interest rate together
         fig, ax = plt.subplots()
         ax.axhline(y=0.05, ls="--", label="Interest rate free")
-        ax.plot(self.time_values, self.interest_rate, label="Interest rate")
+        ax.plot(self.time_values, self.interest_rate, label="Interest rate", c="firebrick")
         ax.set(xlabel="Time", ylabel="Interest rate")
         ax.grid()
         ax.legend(bbox_to_anchor=(0.5, 1), loc="lower center", fontsize=10, ncols=3)
@@ -176,6 +175,7 @@ class BankVisualization(general_functions.PlotMethods):
         fig, ax  = plt.subplots()
         ax.hist(p_final, bins=bins)
         ax.set(xlabel="(Number of employees)", ylabel="Counts", title="Employee distribution at final time")
+        ax.set_xticks(bins)
         ax.grid()
         
         # Add parameters text
@@ -229,8 +229,10 @@ if __name__ == "__main__":
     # bank_vis.plot_means()
     # bank_vis.plot_number_of_bankruptcies()
     # bank_vis.plot_interest_rates()
-    # bank_vis.size_distribution()
-    # bank_vis.plot_production()
-    bank_vis.animate_size_distribution()
+    bank_vis.plot_production()
+    bank_vis.size_distribution()
+    
+    # bank_vis.animate_size_distribution()
+
     
     print("Finished plotting")
