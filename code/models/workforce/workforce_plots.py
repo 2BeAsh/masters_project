@@ -220,15 +220,15 @@ class BankVisualization(general_functions.PlotMethods):
   
   
 if __name__ == "__main__":
-    show_plots = True
+    show_plots = False
     add_parameter_text_to_plot = True
     bank_vis = BankVisualization(group_name, show_plots, add_parameter_text_to_plot)
     
     print("Started plotting")
-    # bank_vis.plot_companies(4)
-    # bank_vis.plot_means()
-    # bank_vis.plot_number_of_bankruptcies()
-    # bank_vis.plot_interest_rates()
+    bank_vis.plot_companies(4)
+    bank_vis.plot_means()
+    bank_vis.plot_number_of_bankruptcies()
+    bank_vis.plot_interest_rates()
     bank_vis.plot_production()
     bank_vis.size_distribution()
     

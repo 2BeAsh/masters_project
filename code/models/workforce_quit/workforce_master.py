@@ -50,6 +50,7 @@ class Workforce():
         
         self.interest_rate_hist = np.zeros(self.time_steps, dtype=float)
         self.went_bankrupt_hist = np.zeros(self.time_steps, dtype=int)
+        self.unemployed_hist = np.zeros(self.time_steps, dtype=int)
         
         # Initial values
         self.p_hist[:, 0] = self.p
@@ -137,7 +138,7 @@ class Workforce():
         self.salary = np.where(self.want_to_hire, increased_salary_val, decreased_salary_val)
 
 
-    def _bankrupcy(self):
+    def _bankruptcy(self):
         # Goes bankrupt if p < rd  - OBS should it be p * w_e / w < r * d?
         bankrupt_idx = self.p < self.interest_rate * self.d
         workers_fired = self.p[bankrupt_idx].sum()  # Number of workers fired
@@ -152,9 +153,10 @@ class Workforce():
         self.went_bankrupt = bankrupt_idx.sum()  # True = 1, False = 0, so sum gives amount of bankrupt companies
 
         # Pick salary of non-bankrupt companies and mutate it
-        idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
-        new_salary_idx = np.random.choice(idx_surving_companies, size=np.sum(bankrupt_idx), replace=True)
-        self.salary[bankrupt_idx] = self.salary[new_salary_idx] + np.random.uniform(-0.1, 0.1, np.sum(bankrupt_idx))
+        self.salary[bankrupt_idx] = np.random.uniform(0.1, 1.5, np.sum(bankrupt_idx))
+        # idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
+        # new_salary_idx = np.random.choice(idx_surving_companies, size=np.sum(bankrupt_idx), replace=True)
+        # self.salary[bankrupt_idx] = self.salary[new_salary_idx] + np.random.uniform(-0.1, 0.1, np.sum(bankrupt_idx))
         
         # Set minimum salary
         self.salary = np.clip(self.salary, 0.01, 1.5)
@@ -180,7 +182,7 @@ class Workforce():
 
         # System variables
         self.interest_rate_hist[time_step] = self.interest_rate * 1
-        
+        self.unemployed_hist[time_step] = self.unemployed * 1
         self.went_bankrupt_hist[time_step] = self.went_bankrupt * 1
         self.went_bankrupt = 0  # Reset for next time step
         
@@ -199,7 +201,7 @@ class Workforce():
             self._quit_job()  # Should either be after salaries are pay or after salaries are updated
             self._who_wants_to_hire(time_step=i)
             self._update_salary()
-            self._bankrupcy()
+            self._bankruptcy()
             self._adjust_interest_for_default(time_step=i)
             self._store_values_in_hist_arrays(time_step=i)         
             
@@ -236,11 +238,10 @@ class Workforce():
         group.create_dataset("d", data=self.d_hist)
         group.create_dataset("s", data=self.salary_hist)
         
-        # Bank variables
+        # System variables
         group.create_dataset("interest_rate", data=self.interest_rate_hist)
-        
-        # Other
         group.create_dataset("went_bankrupt", data=self.went_bankrupt_hist)
+        group.create_dataset("unemployed", data=self.unemployed_hist)
         
         # Attributes
         group.attrs["W"] = self.W

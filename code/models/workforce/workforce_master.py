@@ -111,7 +111,6 @@ class Workforce():
         self._probability_of_default(time_step)
         self.interest_rate = (1 + self.interest_rate_free) / (1 - self.PD) - 1 
         
-        
     
     def _store_values_in_hist_arrays(self, time_step: int) -> None:
         # Company variables
@@ -121,7 +120,7 @@ class Workforce():
         # Bank variables
         self.interest_rate_hist[time_step] = self.interest_rate * 1
         
-        self.went_bankrupt_hist[time_step] = self.went_bankrupt
+        self.went_bankrupt_hist[time_step] = self.went_bankrupt * 1
         self.went_bankrupt = 0  # Reset for next time step
         
         
@@ -177,10 +176,10 @@ class Workforce():
             
 # Define variables for other files to use
 number_of_companies = 400
-number_of_workers = 1000
-time_steps = 2000
+number_of_workers = 1500
+time_steps = 6000
 interest_rate_change_size = 0.02  # rho, percentage change in r
-salary_factor = 1.
+salary_factor = 0.8
 
 # Other files need some variables
 workforce = Workforce(number_of_companies, number_of_workers, interest_rate_change_size, salary_factor, time_steps)
