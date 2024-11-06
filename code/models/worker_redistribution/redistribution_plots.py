@@ -175,12 +175,12 @@ class BankVisualization(general_functions.PlotMethods):
         
         
     def plot_salary(self):
-        fig, (ax, ax1, ax2) = plt.subplots(nrows=3)
+        fig, (ax1, ax2) = plt.subplots(nrows=2)
         
         # All companies' salary over time
-        im = ax.imshow(self.s, cmap="magma")
-        ax.set(xlabel="Time", ylabel="Company", title="Salary over time")
-        fig.colorbar(im)
+        # im = ax.imshow(self.s, cmap="magma")
+        # ax.set(xlabel="Time", ylabel="Company", title="Salary over time")
+        # fig.colorbar(im)
         
         # ax1 - Mean salary over time
         ax1.plot(self.time_values, np.mean(self.s, axis=0))
@@ -194,7 +194,7 @@ class BankVisualization(general_functions.PlotMethods):
         fig.colorbar(im2)
         
         # Add parameter text
-        if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax1)
         # Save and show
         self._save_fig(fig, "salary")
         if self.show_plots: plt.show()
@@ -242,7 +242,7 @@ class BankVisualization(general_functions.PlotMethods):
         """Plot system money spent, fraction employed and inflation
         """
         
-        fig, (ax0, ax1, ax2) = plt.subplots(nrows=3)
+        fig, (ax0, ax1) = plt.subplots(nrows=2)
         
         # ax0 - System money spent
         ax0.plot(self.time_values, self.system_money_spent)
@@ -254,11 +254,11 @@ class BankVisualization(general_functions.PlotMethods):
         ax1.set(ylabel="Fraction", title="Fraction employed")
         ax1.grid()
         
-        # ax2 - Inflation
-        inflation = np.diff(self.system_money_spent) / np.maximum(self.system_money_spent[:-1], 1e-5) * 100  # Percent. Max to prevent div by 0
-        ax2.plot(self.time_values[2:], inflation[1:])
-        ax2.set(ylabel="Percent", title="Inflation", xlabel="Time", yscale="symlog")
-        ax2.grid()
+        # # ax2 - Inflation
+        # inflation = np.diff(self.system_money_spent) / np.maximum(self.system_money_spent[:-1], 1e-5) * 100  # Percent. Max to prevent div by 0
+        # ax2.plot(self.time_values[2:], inflation[1:])
+        # ax2.set(ylabel="Percent", title="Inflation", xlabel="Time", yscale="symlog")
+        # ax2.grid()
         
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax0)
@@ -313,7 +313,6 @@ if __name__ == "__main__":
     bank_vis.plot_means()
     bank_vis.plot_interest_rates()
     bank_vis.plot_production_capacity()
-    bank_vis.plot_unemployed()
     bank_vis.plot_salary()
     bank_vis.plot_system_money()
     

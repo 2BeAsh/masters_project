@@ -17,7 +17,7 @@ class Workforce():
         self.dir_path_output = Path.joinpath(self.dir_path, "output")
         self.dir_path_image = Path.joinpath(self.dir_path, "images", "image_redistribution")
         self.dir_path_image.mkdir(parents=True, exist_ok=True)
-        self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}"
+        self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_rho{self.salary_increase}"
         
         # Seed
         # np.random.seed(42)   
@@ -30,7 +30,7 @@ class Workforce():
         self.time_scale = 12
 
         # Company variables
-        self.machine_cost = 1
+        self.machine_cost = 0.00001
         self.w = np.ones(self.N)  # Will redistribute workers before first timestep anyway
         self.d = self.machine_cost * np.ones(self.N, dtype=float)  # Debt
         self.m = np.ones(self.N, dtype=int)  # Machines
@@ -271,7 +271,7 @@ class Workforce():
 # Define variables for other files to use
 number_of_companies = 300
 number_of_workers = 2500
-time_steps = 15000
+time_steps = 5000
 salary_increase = 0.1
 
 # Other files need some variables
