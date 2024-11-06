@@ -29,16 +29,16 @@ class Workforce():
         self.interest_rate_free = 0.05
         self.interest_rate = self.interest_rate_free
         self.time_scale = 12
-        self.machinery_price = self.time_scale * self.W / self.N  # N / W is average workers per company i.e. roughly income. OBS maybe should just be W / N, as income normally approximately equal to salary expenses?
+        self.machinery_price = 1e-3 # self.W / self.N #self.time_scale * self.W / self.N  # N / W is average workers per company i.e. roughly income. OBS maybe should just be W / N, as income normally approximately equal to salary expenses?
 
         # Company variables
-        self.w = np.ones(self.N, dtype=int)  # Initial workers
+        self.w = int(self.W / (2 * self.N)) * np.ones(self.N, dtype=int)  # Initial workers
         self.m = np.ones(self.N, dtype=int)  # Initial machinery
         self.d = self.machinery_price * np.ones(self.N, dtype=float)  # All starts with debt equal to machinery price.        
         self.salary = np.random.uniform(0.01, 1.1, self.N)  # Pick random salaries
         
         # Worker variables
-        self.unemployed = self.W - self.N  # Every company starts with one employee, N = sum w        
+        self.unemployed = self.W - self.w.sum()  # Every company starts with one employee, N = sum w        
         
         # Initial values
         self.PD = 0
@@ -63,6 +63,8 @@ class Workforce():
         self.d_hist[:, 0] = self.d * 1
         self.salary_hist[:, 0] = self.salary * 1
         self.interest_rate_hist[0] = self.interest_rate * 1
+        self.went_bankrupt_hist[0] = self.went_bankrupt * 1
+        self.unemployed_hist[0] = self.unemployed * 1
 
 
     def _employed(self):
@@ -71,6 +73,14 @@ class Workforce():
     
     def _production_capacity(self):
         return np.minimum(self.w, self.m)
+
+    
+    def _want_to_hire_or_buy_machinery(self):
+        """Companies want to hire or buy machinery if one of the two is limiting their growth.
+            If the two are equal, buy machinery, as otherwise no growth will happen.
+        """
+        self.want_to_hire = self.w < self.m  # workers are more expensive in the long run than machinery, so < not <=
+        self.want_machinery = ~self.want_to_hire  # If does not want to hire, wants to buy machinery
 
 
     def _employment(self):
@@ -104,7 +114,7 @@ class Workforce():
         
         # All companies that want machinery buy machinery
         self.m[self.want_machinery] += 1
-        self.d[self.want_machinery] -= self.machinery_price
+        self.d[self.want_machinery] += self.machinery_price
         
 
     def _sell_and_salary(self):
@@ -114,7 +124,7 @@ class Workforce():
         for _ in range(self.N):
             idx = np.random.randint(0, self.N)
             # print(self._employed(), self.salary[idx], self.w[idx], self._production_capacity()[idx])
-            self.d[idx] = self._employed() / self.W * (self.salary[idx] * self.w[idx] - self._production_capacity()[idx])
+            self.d[idx] = (self.salary[idx] * self.w[idx] - self._production_capacity()[idx]) * self._employed() / self.W
 
 
     def _pay_interest(self) -> None:   
@@ -138,20 +148,11 @@ class Workforce():
             # Update values
             self.w[i] -= number_of_workers_who_quit
             self.unemployed += number_of_workers_who_quit
-
-
-    def _want_to_hire_or_buy_machinery(self):
-        """Companies want to hire or buy machinery if one of the two is limiting their growth.
-            If the two are equal, buy machinery, as otherwise no growth will happen.
-        """
-        self.want_to_hire = self.w < self.m
-        self.want_machinery = ~self.want_to_hire  # If does not want to hire, wants to buy machinery
         
 
     def _update_salary(self):
         """Each company changes its salary. 
-        If the company wants to hire and did not hire last time step, increase salary.
-        If the company does not want to hire, decrease salary
+        If a company expects to loose workers such that w < m, it will increase salary. Otherwise it decreases it.
         """
         # Update if wants to hire or buy machinery
         self._want_to_hire_or_buy_machinery()
@@ -168,29 +169,34 @@ class Workforce():
 
     def _bankruptcy(self):
         # Goes bankrupt if min(w, m) < rd 
-        bankrupt_idx = self._production_capacity() < self.interest_rate * self.d
+        # bankrupt_idx = self._production_capacity() < self.interest_rate * self.d
+        bankrupt_idx = np.logical_or(self._production_capacity() < self.interest_rate * self.d, self.w == 0)
         number_of_companies_gone_bankrupt = bankrupt_idx.sum()  # True = 1, False = 0, so sum gives amount of bankrupt companies
-        workers_fired = self.w[bankrupt_idx].sum() - number_of_companies_gone_bankrupt  # Number of workers fired. Second term because new companies have 1 worker
-        workers_fired = np.maximum(workers_fired, 0)  # Prevent negative workers fired. Can happen if a w = 0 company goes bankrupt.
-        
-        assert workers_fired >= 0, f"Number of workers fired is negative"
+        workers_fired = self.w[bankrupt_idx].sum()
 
         # System values
-        self.unemployed += workers_fired
+        self.unemployed += workers_fired - number_of_companies_gone_bankrupt 
         self.went_bankrupt = number_of_companies_gone_bankrupt  
+        
+        assert self.unemployed <= self.W, "Number of employed workers is larger than total number of workers" 
                 
         # Company values
-        self.w[bankrupt_idx] = 1  # New company no workers
+        self.w[bankrupt_idx] = 1  # New company one workers
         self.d[bankrupt_idx] = self.machinery_price  # New company buys 1 machinery and gains debt equal to machinery price
         self.m[bankrupt_idx] = 1  # New company has 1 machinery
-        
-        # Pick salary of non-bankrupt companies and mutate it
+
+        # self.salary[bankrupt_idx] = np.random.uniform(0.01, 1.1, number_of_companies_gone_bankrupt)
+
+        # # Pick salary of non-bankrupt companies and mutate it
         idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
-        new_salary_idx = np.random.choice(idx_surving_companies, size=np.sum(bankrupt_idx), replace=True)
-        self.salary[bankrupt_idx] = self.salary[new_salary_idx] + np.random.uniform(-0.1, 0.1, np.sum(bankrupt_idx))
+        if idx_surving_companies.size != 0:  # There are non-bankrupt companies            
+            new_salary_idx = np.random.choice(idx_surving_companies, size=np.sum(bankrupt_idx), replace=True)
+            self.salary[bankrupt_idx] = self.salary[new_salary_idx] + np.random.uniform(-0.1, 0.1, np.sum(bankrupt_idx))
+        else:
+            self.salary = np.random.uniform(0.01, 1.1, self.N)
         
         # Set minimum salary
-        self.salary = np.clip(self.salary, 0.01, 1.5)
+        self.salary = np.maximum(self.salary, 0.01)
         
        
     def _probability_of_default(self, time_step, T=12):
@@ -229,9 +235,9 @@ class Workforce():
             self._employment()
             self._buy_machinery()  # Should be after employment, because machinery is bought if m = w. 
             self._sell_and_salary()
-            self._pay_interest()
             self._quit_job() 
             self._update_salary()
+            self._pay_interest()
             self._bankruptcy()
             self._adjust_interest_for_default(time_step=i)
             self._store_values_in_hist_arrays(time_step=i)         
@@ -282,8 +288,8 @@ class Workforce():
 
             
 # Define variables for other files to use
-number_of_companies = 400
-number_of_workers = 1500
+number_of_companies = 200
+number_of_workers = 2500
 time_steps = 500
 interest_rate_change_size = 0.05  # rho, percentage change in r
 salary_increase = 0.1

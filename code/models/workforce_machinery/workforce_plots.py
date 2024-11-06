@@ -98,7 +98,7 @@ class BankVisualization(general_functions.PlotMethods):
         # Setup
         ax.set(xlabel="Time", ylabel="Log Price", title="Mean values", yscale="log")
         ax.grid()
-        self._add_legend(ax, ncols=3, y=0.9)
+        self._add_legend(ax, ncols=4, y=0.9)
         
         # Display parameters
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
@@ -179,6 +179,19 @@ class BankVisualization(general_functions.PlotMethods):
         
         
     def plot_salary(self):
+        # Print the variables of the company with the highest salary
+        # Get the row max salary value
+        # max_salary_index = np.argmax(self.s[:, -1])        
+        # print(f"Company with the highest salary: {max_salary_index}, salary = {self.s[max_salary_index]}")
+        # print("w = ", self.w[max_salary_index, :])                
+        # print("d = ", self.d[max_salary_index, :])
+        # print("m = ", self.m[max_salary_index, :]) 
+        # plt.plot(self.time_values, self.s[max_salary_index, :])
+        # plt.yscale("log")
+        # plt.show()
+        # return
+
+
         fig, (ax, ax1, ax2) = plt.subplots(nrows=3)
         
         # All companies' salary over time
@@ -193,7 +206,7 @@ class BankVisualization(general_functions.PlotMethods):
         
         # ax2 - Delta d over time
         delta_d = np.diff(self.d, axis=1)
-        im2 = ax2.imshow(delta_d, cmap="coolwarm", norm=SymLogNorm(linthresh=1e-6, linscale=1e-6, vmin=-1e-3, vmax=1e-3))
+        im2 = ax2.imshow(delta_d, cmap="coolwarm", norm=SymLogNorm(linthresh=1e-6, linscale=1e-6))
         ax2.set(xlabel="Time", ylabel="Company", title="Delta debt over time")
         fig.colorbar(im2)
         
@@ -234,7 +247,7 @@ class BankVisualization(general_functions.PlotMethods):
     def plot_unemployed(self):
         
         fig, ax = plt.subplots()
-        ax.plot(self.time_values, self.unemployed)
+        ax.plot(self.time_values, self.unemployed / self.W)
         ax.set(xlabel="Time", ylabel="Fraction", title="Fraction of workforce unemployed")
         ax.grid()
         
@@ -286,11 +299,11 @@ if __name__ == "__main__":
     bank_vis = BankVisualization(group_name, show_plots, add_parameter_text_to_plot)
     
     print("Started plotting")
-    # bank_vis.plot_companies(4)
-    # bank_vis.plot_means()
-    # bank_vis.plot_number_of_bankruptcies()
-    # bank_vis.plot_interest_rates()
-    # bank_vis.plot_production_capacity()
+    bank_vis.plot_companies(4)
+    bank_vis.plot_means()
+    bank_vis.plot_number_of_bankruptcies()
+    bank_vis.plot_interest_rates()
+    bank_vis.plot_production_capacity()
     bank_vis.plot_unemployed()
     bank_vis.plot_salary()
     
