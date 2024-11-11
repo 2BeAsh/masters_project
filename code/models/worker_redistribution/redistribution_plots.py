@@ -23,9 +23,10 @@ class BankVisualization(general_functions.PlotMethods):
         self.dir_path_image = dir_path_image
         self.data_path = dir_path_output / "redistribution_simulation_data.h5"
         
-        # Load data
+        # Load data        
         with h5py.File(self.data_path, "r") as file:
             data_group = file[group_name]
+            # Print the names of all groups in file
             self.filename = data_group.name.split("/")[-1]
             
             # Company
@@ -41,7 +42,8 @@ class BankVisualization(general_functions.PlotMethods):
             self.system_money_spent = data_group["system_money_spent"][:]
         
             # Attributes
-            self.sigma = data_group.attrs["salary_increase"]
+            self.rho = data_group.attrs["salary_increase"]
+            self.salary_increase_space = data_group.attrs["salary_increase_space"]
             self.W = data_group.attrs["W"]
             
         self.N = self.w.shape[0]
@@ -110,10 +112,10 @@ class BankVisualization(general_functions.PlotMethods):
         if self.show_plots: plt.show()
                 
         
-    def plot_interest_rates(self):
+    def plot_interest_rates_unemployed(self):
         """Plot the interest rate and the fraction of companies gone bankrupt over time.
         """
-        fig, (ax, ax1) = plt.subplots(nrows=2)
+        fig, (ax, ax1, ax2) = plt.subplots(nrows=3)
 
         # ax Interest rate and free interest rate
         ax.axhline(y=0.05, ls="--", label="Interest rate free")
@@ -124,8 +126,13 @@ class BankVisualization(general_functions.PlotMethods):
         
         # ax1 bankruptcies
         ax1.plot(self.time_values, self.went_bankrupt / self.N, label="Bankruptcies")
-        ax1.set(xlabel="Time", ylabel="Bankrupt fraction", title="Bankruptcies")
+        ax1.set(ylabel="Bankrupt fraction", title="Bankruptcies")
         ax1.grid()
+        
+        # ax2 unemploed
+        ax2.plot(self.time_values, self.unemployed / self.W)
+        ax2.set(xlabel="Time", ylabel="Fraction unemployed", title="Fraction of workforce unemployed")
+        ax2.grid()
         
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
@@ -184,7 +191,7 @@ class BankVisualization(general_functions.PlotMethods):
         
         # ax1 - Mean salary over time
         ax1.plot(self.time_values, np.mean(self.s, axis=0))
-        ax1.set(xlabel="Time", ylabel="Price", title="Mean salary over time", xlim=(0, self.time_steps))
+        ax1.set(xlabel="Time", ylabel="Log Price", title="Mean salary over time", xlim=(0, self.time_steps), yscale="log")
         ax1.grid()
         
         # ax2 - Delta d over time
@@ -202,12 +209,14 @@ class BankVisualization(general_functions.PlotMethods):
         
     def plot_production_capacity(self):
         w_final = self.w[:, -1]
-        max_val = w_final.max()
-        bins = np.arange(0, max_val +1 , 1)
+        m_final = self.m[:, -1]
+        max_val = np.max((w_final, m_final))
+        bins = np.arange(0, max_val + 1 , 1)
         
         fig, ax  = plt.subplots()
         counts, edges, _ = ax.hist(w_final, bins=bins, label=r"$w$", alpha=0.7)
-        ax.set(xlabel="Company workforce", ylabel="Counts", title="Production capacity distributions at final time")
+        _, _, _ = ax.hist(m_final, bins=bins, label=r"$m$", alpha=0.7)
+        ax.set(xlabel="Amount of machines or workers", ylabel="Number of companies", title="Worker and machine distributions at final time")
         ax.grid()
         
         # xticks
@@ -216,7 +225,7 @@ class BankVisualization(general_functions.PlotMethods):
         ax.set_xticks(xticks)
         
         # Legend
-        self._add_legend(ax, ncols=1, y=0.9)
+        self._add_legend(ax, ncols=2, y=0.9)
         
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
@@ -268,6 +277,125 @@ class BankVisualization(general_functions.PlotMethods):
         if self.show_plots: plt.show()
 
 
+    def _load_peak_data(self):
+      # Empty lists
+        self.system_money_spent_list = []
+        self.peak_list = []
+        self.peak_idx_list = []
+
+        def _replace_salary_increase(group_name, new_rho_val):
+            parts = group_name.split("rho")
+            new_group_name = parts[0] + f"rho{new_rho_val}_" + parts[-1].split("_", 1)[1]
+            return new_group_name
+        
+        with h5py.File(self.data_path, "r") as file:
+            for rho in self.salary_increase_space:
+                # Find "rho" in group_name, replace the value with the current rho
+                group_name_new = _replace_salary_increase(self.group_name, rho)
+                data_group = file[group_name_new]
+
+                system_money_spent = data_group["system_money_spent"][:]
+                peak_idx = data_group["peak_idx"][:]
+                peak_vals = data_group["peak_vals"][:]
+                
+                # Append to lists
+                self.system_money_spent_list.append(system_money_spent)
+                self.peak_list.append(peak_vals)
+                self.peak_idx_list.append(peak_idx)
+
+
+    def parameter_peak(self):
+        self._load_peak_data()
+        
+        number_of_salary_values = len(self.salary_increase_space)
+        ncols = 2
+        nrows = number_of_salary_values // ncols
+        
+        def _plot_func(axis, idx):
+            axis.plot(self.time_values, self.system_money_spent_list[idx])
+            axis.plot(self.peak_idx_list[idx], self.peak_list[idx], "x")
+            axis.set(ylabel="Log $", title=fr"$\rho=${self.salary_increase_space[idx]}", yscale="log", xlabel="Time")
+            axis.grid()
+        
+        fig, ax = plt.subplots(ncols=ncols, nrows=nrows)
+        for i in range(ncols*nrows):
+            _plot_func(ax[i // ncols, i % ncols], i)
+        
+        # Add parameters text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax[0, 0])
+        # Save and show
+        self._save_fig(fig, "peak")
+        if self.show_plots: plt.show()
+        
+    
+    def peak_frequency_vs_rho(self):
+        self._load_peak_data()
+        
+        period_mean = np.zeros(len(self.salary_increase_space))
+        period_std = np.zeros(len(self.salary_increase_space))
+        for i in range(len(self.salary_increase_space)):
+            if self.peak_idx_list[i].size == 0:
+                period_mean[i] = 0
+                period_std[i] = 0
+            elif self.peak_idx_list[i].size == 1:
+                period_mean[i] = self.peak_idx_list[i][0]
+                period_std[i] = 0
+            else:
+                peak_diff = np.diff(self.peak_idx_list[i])  # Distances between neighbouring peaks
+                period_mean[i] = np.mean(peak_diff)  # Mean distance
+                period_std[i] = np.std(peak_diff)  # Standard deviation of distances
+        
+        # freq_mean = 1 / period_mean
+        # freq_std = period_std / period_mean ** 2  # Error propagation: std(f) = 1 / T * std(T) / T
+
+        # Create figure
+        fig, ax = plt.subplots()
+        ax.errorbar(self.salary_increase_space, period_mean, yerr=period_std, fmt="o")
+        ax.set(xlabel=r"$\rho$", ylabel="Peak period", title="Period of peaks")
+        ax.grid()
+        
+        # Add parameters text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
+        # Save and show
+        self._save_fig(fig, "peak_period")
+        if self.show_plots: plt.show()
+    
+    
+    def peak_first_crash(self):
+        # Get the time of the first peak which corresponds to the time it takes for the system to crash
+        self._load_peak_data()
+        
+        first_crash_time = np.zeros(len(self.salary_increase_space))
+        
+        for i in range(len(self.salary_increase_space)):
+            # Check for the case of no peaks
+            if self.peak_idx_list[i].size == 0:
+                first_crash_time[i] = self.time_steps
+            else:
+                first_crash_time[i] = self.peak_idx_list[i][0]
+                
+        # Find ylim as the maximum value NOT equal to time_steps
+        ymax = np.max(first_crash_time[first_crash_time != self.time_steps]) * 1.1  # 10% bigger
+        ylim = (0, ymax)    
+        # Find the first rho value for which the companies start having no distinct peaks i.e. the first time value to be equal to time_steps
+        no_distinct_peaks = self.salary_increase_space[first_crash_time == self.time_steps][0]
+        
+        # Create figure
+        fig, ax = plt.subplots()
+        ax.plot(self.salary_increase_space, first_crash_time, "o", label="First crash")
+        ax.axvline(x=no_distinct_peaks, ls="--", c="grey", label="No distinct peaks")
+        ax.set(xlabel=r"$\rho$", ylabel="Time", ylim=ylim)
+        ax.grid()
+        
+        # Legend
+        self._add_legend(ax, y=0.9, ncols=2)
+        # Add parameters text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
+        # Save and show
+        self._save_fig(fig, "first_crash")
+        if self.show_plots: plt.show()
+    
+
     def animate_size_distribution(self):
         # Bin data
         bins = np.arange(0, int(self.p.max()) + 1, 1)
@@ -299,8 +427,7 @@ class BankVisualization(general_functions.PlotMethods):
         ani = animation.FuncAnimation(fig, anim, frames=self.time_steps, interval=1)
         
         # Save animation
-        animation_name = Path.joinpath(self.dir_path_image, "workforce_animation" + self.filename + ".mp4")
-        ani.save(animation_name, fps=30)
+        self._save_anim(ani, name="workforce_animation")
   
   
 if __name__ == "__main__":
@@ -309,14 +436,18 @@ if __name__ == "__main__":
     bank_vis = BankVisualization(group_name, show_plots, add_parameter_text_to_plot)
     
     print("Started plotting")
-    bank_vis.plot_companies(4)
-    bank_vis.plot_means()
-    bank_vis.plot_interest_rates()
-    bank_vis.plot_production_capacity()
-    bank_vis.plot_salary()
-    bank_vis.plot_system_money()
+    # bank_vis.plot_companies(4)
+    # bank_vis.plot_means()
+    # bank_vis.plot_interest_rates_unemployed()
+    # bank_vis.plot_production_capacity()
+    # bank_vis.plot_salary()
     
+    # -- Peak analysis -- 
+    # bank_vis.parameter_peak()
+    # bank_vis.peak_frequency_vs_rho()
+    bank_vis.peak_first_crash()
+    
+    # -- Animations --    
     # bank_vis.animate_size_distribution()
-
     
     print("Finished plotting")
