@@ -133,7 +133,7 @@ class Workforce():
         for _ in range(self.N):
             idx = np.random.randint(0, self.N)
             # print(self._employed(), self.salary[idx], self.w[idx], self._production_capacity()[idx])
-            self.d[idx] = (self.salary[idx] * self.w[idx] - self._production_capacity()[idx]) * self._employed() / self.W
+            self.d[idx] += (self.salary[idx] * self.w[idx] - self._production_capacity()[idx]) * self._employed() / self.W
 
 
     def _pay_interest(self) -> None:   
