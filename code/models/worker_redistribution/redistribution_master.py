@@ -6,13 +6,14 @@ from scipy.signal import find_peaks
 
 
 class Workforce():
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, machine_cost, time_steps, salary_increase_space=np.linspace(0.01, 0.5, 5)):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, machine_cost, time_steps, salary_increase_space=np.linspace(0.01, 0.5, 5), machine_cost_space=np.logspace(-4, 1, 5)):
         self.N = number_of_companies
         self.W = number_of_workers 
         self.salary_increase = salary_increase
         self.time_steps = time_steps
         self.machine_cost = machine_cost
         self.salary_increase_space = salary_increase_space  # Used in case the store_peak_rho_space method is not called
+        self.machine_cost_space = machine_cost_space  
         
         # Local paths for saving files
         file_path = Path(__file__)
@@ -198,7 +199,7 @@ class Workforce():
             salary_paid = self.salary[idx] * self.w[idx]
             
             # Update values
-            self.d[idx] = salary_paid - sell
+            self.d[idx] += salary_paid - sell
             self.system_money_spent += salary_paid 
 
 
@@ -364,32 +365,43 @@ class Workforce():
             group.attrs["W"] = self.W
             group.attrs["salary_increase"] = self.salary_increase
             group.attrs["salary_increase_space"] = self.salary_increase_space
+            group.attrs["machine_cost_space"] = self.machine_cost_space
 
 
-    def store_peak_rho_space(self, seed=42):
-        """Get peak values for different salary increase values
+    def store_peak_over_parameter_space(self, variable="rho", seed=42):
+        """Get peak values for different salary increase values or machine cost
         """
         # Fix the seed such that the parameter is the only thing changing
         np.random.seed(seed)
         
-        N_sim = len(self.salary_increase_space)
-        for i, rho in enumerate(self.salary_increase_space):
-            print(f"{i+1}/{N_sim}")
-            self.salary_increase = rho
-            self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_rho{rho}_M{self.machine_cost}"
-            self.store_values()
+        # Depending on whether rho or machine cost is investigated, change the variable
+        if variable == "rho":
+            N_sim = len(self.salary_increase_space)
+            for i, rho in enumerate(self.salary_increase_space):
+                print(f"{i+1}/{N_sim}")
+                self.salary_increase = rho
+                self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_rho{rho}_M{self.machine_cost}"
+                self.store_values()
+        elif variable == "machine_cost":
+            N_sim = len(self.machine_cost_space)
+            for i, machine_cost in enumerate(self.machine_cost_space):
+                print(f"{i+1}/{N_sim}")
+                self.machine_cost = machine_cost
+                self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_rho{self.salary_increase}_M{machine_cost}"
+                self.store_values()
 
             
 # Define variables for other files to use
 number_of_companies = 250
 number_of_workers = 2500
-time_steps = 5000
-machine_cost = 1
+time_steps = 7500
+machine_cost = 0.01
 salary_increase = 0.1
 salary_increase_space = np.arange(0.04, 0.3, 0.03).round(4)
+machine_cost_space = np.linspace(0.01, 5, 8).round(4)
 
 # Other files need some variables
-workforce = Workforce(number_of_companies, number_of_workers, salary_increase, machine_cost, time_steps, salary_increase_space)
+workforce = Workforce(number_of_companies, number_of_workers, salary_increase, machine_cost, time_steps, salary_increase_space, machine_cost_space)
 
 dir_path_output = workforce.dir_path_output
 dir_path_image = workforce.dir_path_image
@@ -397,5 +409,5 @@ group_name = workforce.group_name
 
 if __name__ == "__main__":
     workforce.store_values()
-    workforce.store_peak_rho_space()
+    # workforce.store_peak_over_parameter_space(variable="machine_cost")
     print("Stored Values")

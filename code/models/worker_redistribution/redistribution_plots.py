@@ -6,10 +6,10 @@ import h5py
 import functools
 import matplotlib.animation as animation
 
-
 # My files
 import general_functions
 from redistribution_master import dir_path_output, dir_path_image, group_name
+
 
 class BankVisualization(general_functions.PlotMethods):
     def __init__(self, group_name, show_plots, add_parameter_text_to_plot):
@@ -44,6 +44,7 @@ class BankVisualization(general_functions.PlotMethods):
             # Attributes
             self.rho = data_group.attrs["salary_increase"]
             self.salary_increase_space = data_group.attrs["salary_increase_space"]
+            self.machine_cost_space = data_group.attrs["machine_cost_space"]    
             self.W = data_group.attrs["W"]
             
         self.N = self.w.shape[0]
@@ -277,7 +278,7 @@ class BankVisualization(general_functions.PlotMethods):
         if self.show_plots: plt.show()
 
 
-    def _load_peak_data(self):
+    def _load_peak_data(self, variable="rho"):
       # Empty lists
         self.system_money_spent_list = []
         self.peak_list = []
@@ -288,33 +289,57 @@ class BankVisualization(general_functions.PlotMethods):
             new_group_name = parts[0] + f"rho{new_rho_val}_" + parts[-1].split("_", 1)[1]
             return new_group_name
         
-        with h5py.File(self.data_path, "r") as file:
-            for rho in self.salary_increase_space:
-                # Find "rho" in group_name, replace the value with the current rho
-                group_name_new = _replace_salary_increase(self.group_name, rho)
-                data_group = file[group_name_new]
-
-                system_money_spent = data_group["system_money_spent"][:]
-                peak_idx = data_group["peak_idx"][:]
-                peak_vals = data_group["peak_vals"][:]
-                
-                # Append to lists
-                self.system_money_spent_list.append(system_money_spent)
-                self.peak_list.append(peak_vals)
-                self.peak_idx_list.append(peak_idx)
-
-
-    def parameter_peak(self):
-        self._load_peak_data()
+        def _replace_machine_cost(group_name, new_M_val):
+            parts = group_name.split("M")
+            new_group_name = parts[0] + f"M{new_M_val}"
+            return new_group_name
         
-        number_of_salary_values = len(self.salary_increase_space)
+        with h5py.File(self.data_path, "r") as file:
+            if variable == "rho":
+                self.parameter_space = self.salary_increase_space
+                for rho in self.salary_increase_space:
+                    # Find "rho" in group_name, replace the value with the current rho
+                    group_name_new = _replace_salary_increase(self.group_name, rho)
+                    data_group = file[group_name_new]
+
+                    system_money_spent = data_group["system_money_spent"][:]
+                    peak_idx = data_group["peak_idx"][:]
+                    peak_vals = data_group["peak_vals"][:]
+                    
+                    # Append to lists
+                    self.system_money_spent_list.append(system_money_spent)
+                    self.peak_list.append(peak_vals)
+                    self.peak_idx_list.append(peak_idx)
+            
+            elif variable == "machine_cost":
+                self.parameter_space = self.machine_cost_space
+                for M in self.machine_cost_space:
+                    group_name_new = _replace_machine_cost(self.group_name, M)
+                    data_group = file[group_name_new]
+
+                    system_money_spent = data_group["system_money_spent"][:]
+                    peak_idx = data_group["peak_idx"][:]
+                    peak_vals = data_group["peak_vals"][:]
+                    
+                    # Append to lists
+                    self.system_money_spent_list.append(system_money_spent)
+                    self.peak_list.append(peak_vals)
+                    self.peak_idx_list.append(peak_idx)
+            else:
+                raise ValueError("variable must be 'rho' or 'machine_cost'.")
+
+
+    def parameter_peak(self, variable):
+        self._load_peak_data(variable)
+        
+        number_of_salary_values = len(self.peak_idx_list)
         ncols = 2
         nrows = number_of_salary_values // ncols
         
         def _plot_func(axis, idx):
             axis.plot(self.time_values, self.system_money_spent_list[idx])
             axis.plot(self.peak_idx_list[idx], self.peak_list[idx], "x")
-            axis.set(ylabel="Log $", title=fr"$\rho=${self.salary_increase_space[idx]}", yscale="log", xlabel="Time")
+            axis.set(ylabel="Log $", title=fr"{variable}$=${self.parameter_space[idx]}", yscale="log", xlabel="Time")
             axis.grid()
         
         fig, ax = plt.subplots(ncols=ncols, nrows=nrows)
@@ -324,16 +349,16 @@ class BankVisualization(general_functions.PlotMethods):
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax[0, 0])
         # Save and show
-        self._save_fig(fig, "peak")
+        self._save_fig(fig, "peak_"+variable)
         if self.show_plots: plt.show()
         
     
-    def peak_frequency_vs_rho(self):
-        self._load_peak_data()
+    def peak_frequency_vs_parameter(self, variable):
+        self._load_peak_data(variable)
         
-        period_mean = np.zeros(len(self.salary_increase_space))
-        period_std = np.zeros(len(self.salary_increase_space))
-        for i in range(len(self.salary_increase_space)):
+        period_mean = np.zeros(len(self.peak_idx_list))
+        period_std = np.zeros(len(self.peak_idx_list))
+        for i in range(len(self.peak_idx_list)):
             if self.peak_idx_list[i].size == 0:
                 period_mean[i] = 0
                 period_std[i] = 0
@@ -350,26 +375,26 @@ class BankVisualization(general_functions.PlotMethods):
 
         # Create figure
         fig, ax = plt.subplots()
-        ax.errorbar(self.salary_increase_space, period_mean, yerr=period_std, fmt="o")
-        ax.set(xlabel=r"$\rho$", ylabel="Peak period", title="Period of peaks")
+        ax.errorbar(self.parameter_space, period_mean, yerr=period_std, fmt="o")
+        ax.set(xlabel=variable, ylabel="Peak period", title="Period of peaks")
         ax.grid()
         
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
         # Save and show
-        self._save_fig(fig, "peak_period")
+        self._save_fig(fig, "peak_period_" + variable)
         if self.show_plots: plt.show()
     
     
-    def peak_first_crash(self):
+    def peak_first_crash(self, variable):
         # Get the time of the first peak which corresponds to the time it takes for the system to crash
-        self._load_peak_data()
+        self._load_peak_data(variable)
         
-        first_crash_time = np.zeros(len(self.salary_increase_space))
+        first_crash_time = np.zeros(len(self.peak_idx_list))
         
         for i in range(len(self.salary_increase_space)):
             # Check for the case of no peaks
-            if self.peak_idx_list[i].size == 0:
+            if np.size(self.peak_idx_list) == 0:
                 first_crash_time[i] = self.time_steps
             else:
                 first_crash_time[i] = self.peak_idx_list[i][0]
@@ -378,13 +403,13 @@ class BankVisualization(general_functions.PlotMethods):
         ymax = np.max(first_crash_time[first_crash_time != self.time_steps]) * 1.1  # 10% bigger
         ylim = (0, ymax)    
         # Find the first rho value for which the companies start having no distinct peaks i.e. the first time value to be equal to time_steps
-        no_distinct_peaks = self.salary_increase_space[first_crash_time == self.time_steps][0]
+        no_distinct_peaks = self.parameter_space[first_crash_time == self.time_steps][0]
         
         # Create figure
         fig, ax = plt.subplots()
-        ax.plot(self.salary_increase_space, first_crash_time, "o", label="First crash")
+        ax.plot(self.parameter_space, first_crash_time, "o", label="Time of first crash")
         ax.axvline(x=no_distinct_peaks, ls="--", c="grey", label="No distinct peaks")
-        ax.set(xlabel=r"$\rho$", ylabel="Time", ylim=ylim)
+        ax.set(xlabel=variable, ylabel="Time", ylim=ylim, title="Time of first crash")
         ax.grid()
         
         # Legend
@@ -392,7 +417,7 @@ class BankVisualization(general_functions.PlotMethods):
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
         # Save and show
-        self._save_fig(fig, "first_crash")
+        self._save_fig(fig, "first_crash_"+variable)
         if self.show_plots: plt.show()
     
 
@@ -436,16 +461,17 @@ if __name__ == "__main__":
     bank_vis = BankVisualization(group_name, show_plots, add_parameter_text_to_plot)
     
     print("Started plotting")
-    # bank_vis.plot_companies(4)
-    # bank_vis.plot_means()
-    # bank_vis.plot_interest_rates_unemployed()
-    # bank_vis.plot_production_capacity()
-    # bank_vis.plot_salary()
+    bank_vis.plot_companies(4)
+    bank_vis.plot_means()
+    bank_vis.plot_interest_rates_unemployed()
+    bank_vis.plot_production_capacity()
+    bank_vis.plot_salary()
     
     # -- Peak analysis -- 
-    # bank_vis.parameter_peak()
-    # bank_vis.peak_frequency_vs_rho()
-    bank_vis.peak_first_crash()
+    variable = "machine_cost"  # "rho" or "machine_cost"
+    # bank_vis.parameter_peak(variable)
+    # bank_vis.peak_frequency_vs_parameter(variable)
+    # bank_vis.peak_first_crash(variable)  # Basically identical to frequency 
     
     # -- Animations --    
     # bank_vis.animate_size_distribution()
