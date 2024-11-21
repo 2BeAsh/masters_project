@@ -2,16 +2,16 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 import h5py
-from scipy.signal import find_peaks
 
 
 class Workforce():
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, time_steps, salary_increase_space=np.linspace(0.01, 0.5, 5)):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, time_steps, salary_increase_space=np.linspace(0.01, 0.5, 5), seed=None):
         self.N = number_of_companies
         self.W = number_of_workers 
         self.salary_increase = salary_increase
         self.time_steps = time_steps
         self.salary_increase_space = salary_increase_space  # Used in case the store_peak_rho_space method is not called
+        self.seed = seed
         
         # Local paths for saving files
         file_path = Path(__file__)
@@ -19,22 +19,22 @@ class Workforce():
         self.dir_path_output = Path.joinpath(self.dir_path, "output")
         self.dir_path_image = Path.joinpath(self.dir_path, "images", "image_redistribution_no_m")
         self.dir_path_image.mkdir(parents=True, exist_ok=True)
-        self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_rho{self.salary_increase}"
+        self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.salary_increase}"
         
         # Seed
-        # np.random.seed(42)   
+        np.random.seed(self.seed)  
         
 
     def _initialize_market_variables(self) -> None:    
         # System variables
         self.interest_rate_free = 0.05
         self.interest_rate = self.interest_rate_free
-        self.time_scale = 12
+        self.time_scale = 1
 
         # Company variables
         self.w = np.ones(self.N, dtype=int)  # Will redistribute workers before first timestep anyway
         self.d = np.zeros(self.N, dtype=float)  # Debt
-        self.salary = np.random.uniform(self.salary_increase, 1+self.salary_increase, self.N)  # Pick random salaries
+        self.salary = np.random.uniform(self.salary_increase, 1, self.N)  # Pick random salaries
                 
         # Worker variables
         self.unemployed = self.W - self.w.sum()  # Every company starts with employees       
@@ -101,25 +101,19 @@ class Workforce():
         Returns:
             np.ndarray:: self.N + 1 sized array with probabilities for each company to get a worker.
         """
-        # Probability of getting employed by a company
-        # prob_get_a_worker = self.salary / self.salary.sum()
-        # prob_get_a_worker = self.salary ** 2 / (self.salary ** 2).sum()
-        
         # Include option for not choosing a company to work for i.e. stay unemployed.
         # Have a false company that no one works for, and if a worker chooses this company, they are unemployed.
-        # print((self.salary_including_ghost_company).sum()   )
         prob_get_a_worker = self.salary_including_ghost_company ** 2 / (self.salary_including_ghost_company ** 2).sum()        
         
+        # Should this include the probability of bankruptcy?
+        # So p_ghost = min(s) + PD  #  or similar
         return prob_get_a_worker
 
 
-    def _redistribute_workers(self, time_step):
+    def _redistribute_workers(self):
         # Include option for not choosing a company to work for i.e. stay unemployed.
-        # Option 1: Have a false company that no one works for, and if a worker chooses this company, they are unemployed.
-        # Option 2: Create an array of probabilities for each company, and if a worker does not choose any of those, it stays unemployed.
-
         # Use a single "ghost company" to reflect unemployment
-        self.w[:] = 0
+        self.w[:] = 0  # "Fire" all workers
         self._ghost_company()
         
         # All workers picks a company to work for with some probability
@@ -135,28 +129,46 @@ class Workforce():
         self._employed()
 
 
-    def _sell_and_salary_test(self):
-        self._employed()
+    def _employment_probability_alt(self) -> np.ndarray:
+        # OBS USE OTHER FORMULA
+        return self.salary ** 2 / (self.salary ** 2).sum()
+    
+
+    def _redistribute_workers_alt(self):
+        """Every company has a probability to employ a worker. Each worker draws a random company to attempt to work for. If it is not employed, it remains unemployed."""
+        # Fire all workers
+        self.w[:] = 0
         
-        for _ in range(self.N):
-            idx = np.random.randint(0, self.N)
-            self.d[idx] += self.w[idx] * self.employed / self.W
+        # Workers pick a company to attempt to work for
+        idx_workers_chosen_company = np.random.choice(np.arange(self.N), size=self.W, replace=True)  # Includes multiple of the same company
         
+        # Get employment probabilities and random numbers to compare these with
+        company_employment_probability = self._employment_probability_alt()        
+        random_numbers = np.random.uniform(size=self.W)
+
+        # Loop over each company that the workers choose, and see if they are employed
+        for i, idx_chosen in enumerate(idx_workers_chosen_company):
+            if random_numbers[i] < company_employment_probability[idx_chosen]:
+                self.w[idx_chosen] += 1
+
 
     def _sell_and_salary(self):
-        """Choose N random companies to sell. Whenever you sell, you also pay salaries.
-        """
-        # Choose random company to gain money from selling to employed people, but also to pay salaries
         self._employed()
-        for _ in range(self.N):
-            idx = np.random.randint(0, self.N)
-            sell = self.w[idx] * self.system_money_spent_last_step / self.employed
-            salary_paid = self.salary[idx] * self.w[idx]
-            
-            # Update values
-            self.d[idx] += salary_paid - sell
-            self.system_money_spent += salary_paid 
-
+        # Pick the indices of the companies that will sell
+        idx_companies_selling = np.random.choice(np.arange(self.N), size=self.N, replace=True)
+        # Find which companies that sells and how many times they do it
+        idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
+        # Find how much each of the chosen companies sell for and how much they pay in salary
+        sell_unique = self.w[idx_unique] * self.system_money_spent_last_step / self.employed  
+        salary_unique = self.salary[idx_unique] * self.w[idx_unique]
+        # Multiply that by how many times they sold and paid salaries
+        sell_unique_all = sell_unique * counts
+        salary_unique_all = salary_unique * counts
+        
+        # Update values
+        self.d[idx_unique] += salary_unique_all - sell_unique_all
+        self.system_money_spent += salary_unique_all.sum()
+        
 
     def _pay_interest(self) -> None:   
         positive_debt_idx = self.d > 0
@@ -168,8 +180,11 @@ class Workforce():
         If a company expects to loose workers such that w < m, it will increase salary. Otherwise it decreases it.
         """
         # Values for increased and decreased salary
-        increased_salary_val = self.salary * (1 + self.salary_increase * self.negative_correction_factor)
-        decreased_salary_val = self.salary * (1 - self.salary_increase)
+        noise_factor = 1# np.random.uniform(0, 1, size=self.N)
+        negative_correction_factor = self.salary_increase * noise_factor / (1 - self.salary_increase * noise_factor)
+        
+        increased_salary_val = self.salary * (1 + negative_correction_factor)
+        decreased_salary_val = self.salary * (1 - self.salary_increase * noise_factor) 
         
         # Find who wants to increase 
         delta_debt = self.d - self.d_hist[:, time_step - 1]
@@ -184,7 +199,8 @@ class Workforce():
 
     def _bankruptcy(self):
         # Goes bankrupt if min(w, m) < rd 
-        bankrupt_idx = self.w < self.interest_rate * self.d
+        # bankrupt_idx = self.w < self.interest_rate * self.d
+        bankrupt_idx = self.w * self.system_money_spent / self.W < self.interest_rate * self.d
         number_of_companies_gone_bankrupt = bankrupt_idx.sum()  # True = 1, False = 0, so sum gives amount of bankrupt companies
 
         # System values
@@ -198,7 +214,7 @@ class Workforce():
         idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
         if idx_surving_companies.size != 0:  # There are non-bankrupt companies            
             new_salary_idx = np.random.choice(idx_surving_companies, size=number_of_companies_gone_bankrupt, replace=True)
-            self.salary[bankrupt_idx] = self.salary[new_salary_idx] + (2 * np.random.randint(0, 2, size=number_of_companies_gone_bankrupt) - 1) * self.salary_increase
+            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 # + np.random.uniform(-self.salary_increase, self.salary_increase, size=number_of_companies_gone_bankrupt)
         else:
             self.salary = np.random.uniform(self.salary_increase, 1, number_of_companies_gone_bankrupt)
         
@@ -244,41 +260,22 @@ class Workforce():
         self._initialize_hist_arrays()
         
         # Redistribute workers once to get initial values
-        self._redistribute_workers(time_step=1)
+        self._redistribute_workers()
         
         # Run simulation
         for i in tqdm(range(1, self.time_steps)):
             self._sell_and_salary()
             self._pay_interest()
             self._update_salary(time_step=i)
-            self._redistribute_workers(time_step=i)
+            self._redistribute_workers()
             self._bankruptcy()
             self._adjust_interest_for_default(time_step=i)
             self._store_values_in_hist_arrays(time_step=i)         
     
-    
-    def _peaks(self):
-        # Find the amplitude and frequency of system_money_spent peaks using scipy find_peaks
-        # Remove the first initial_values_skipped data points as they are warmup
-        # Prominence: Take a peak and draw a horizontal line to the highest point between the peak and the next peak. The prominence is the height of the peak's summit above this horizontal line.
-        initial_values_skipped = 500
-        system_money = self.system_money_spent_hist[initial_values_skipped:]
-        prominence = system_money.max() / 10  # Prominence is 1/4 of the max value
-        self.peak_idx, _ = find_peaks(x=system_money, height=5, distance=5, width=3, prominence=prominence)  # Height: Minimum y value, distance: Minimum x distance between peaks, prominence: 
-        # self.peak_idx, _ = find_peaks(x=system_money)
-        self.peak_vals = system_money[self.peak_idx]
-        self.peak_idx += initial_values_skipped 
-        
-    
-    def _get_data(self):
-        # Run simulation, peaks
-        self._simulation()
-        self._peaks()
-        
 
-    def store_values(self) -> None:
+    def store_data(self) -> None:
         # Get data
-        self._get_data()
+        self._simulation()
         
         # Check if output directory exists
         self.dir_path_output.mkdir(parents=True, exist_ok=True)
@@ -306,8 +303,6 @@ class Workforce():
             group.create_dataset("went_bankrupt", data=self.went_bankrupt_hist)
             group.create_dataset("unemployed", data=self.unemployed_hist)
             group.create_dataset("system_money_spent", data=self.system_money_spent_hist)
-            group.create_dataset("peak_idx", data=self.peak_idx)
-            group.create_dataset("peak_vals", data=self.peak_vals)
             
             # Attributes
             group.attrs["W"] = self.W
@@ -315,36 +310,38 @@ class Workforce():
             group.attrs["salary_increase_space"] = self.salary_increase_space
 
 
-    def store_peak_over_parameter_space(self, seed=42):
-        """Get peak values for different salary increase values or machine cost
+    def store_data_over_parameter_space(self):
+        """Create data for different values of rho and store it in the same file as the simulation data.
         """
         # Fix the seed such that the parameter is the only thing changing
-        np.random.seed(seed)
+        random_seed = np.random.randint(0, 100000)
+        np.random.seed(random_seed)
         
         # Depending on whether rho or machine cost is investigated, change the variable
         N_sim = len(self.salary_increase_space)
         for i, rho in enumerate(self.salary_increase_space):
             print(f"{i+1}/{N_sim}")
             self.salary_increase = rho
-            self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_rho{rho}"
-            self.store_values()
+            self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{rho}"
+            self.store_data()
 
             
 # Define variables for other files to use
 number_of_companies = 250
-number_of_workers = 2500
-time_steps = 10_000
-salary_increase = 0.005
-salary_increase_space = np.array([0.001, 0.005, 0.01, 0.025, 0.05, 0.6]) #np.linspace(0.04, 0.3, 4).round(4)  # Add around 0.1 starts to diverge
+number_of_workers = 5000
+time_steps = 5000
+salary_increase = 0.03
+salary_increase_space = np.array([0.005, 0.01, 0.03, 0.05])  # At around 0.08 starts to diverge
+seed = None
 
 # Other files need some variables
-workforce = Workforce(number_of_companies, number_of_workers, salary_increase, time_steps, salary_increase_space)
+workforce = Workforce(number_of_companies, number_of_workers, salary_increase, time_steps, salary_increase_space, seed)
 
 dir_path_output = workforce.dir_path_output
 dir_path_image = workforce.dir_path_image
 group_name = workforce.group_name
 
 if __name__ == "__main__":
-    workforce.store_values()
-    # workforce.store_peak_over_parameter_space()
+    workforce.store_data()
+    # workforce.store_data_over_parameter_space()
     print("Stored Values")
