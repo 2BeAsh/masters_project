@@ -387,13 +387,13 @@ if __name__ == "__main__":
         
         visualize.plot_companies(N_plot=4, scale=scale)
         visualize.plot_means(scale)
-        # visualize.final_time_values(scale)
+        visualize.final_time_values(scale)
         visualize.final_time_size_dist()
         visualize.plot_bank_fortune()
         visualize.plot_beta_evolution()
-        # visualize.plot_did_not_take_loan()
-        # visualize.plot_derivatives()
-        # visualize.plot_consecutive_counts()
+        visualize.plot_did_not_take_loan()
+        visualize.plot_derivatives()
+        visualize.plot_consecutive_counts()
         
         if animate:
             visualize.animate_values(scale)

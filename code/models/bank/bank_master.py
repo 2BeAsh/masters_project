@@ -389,13 +389,13 @@ class BankDebtDeflation():
     
 
 # Parameters
-N_companies = 100
-time_steps = 1000
+N_companies = 150
+time_steps = 15_000
 alpha = 0.1
 interest_rate_change_size = 0.05
 beta_mutation_size = 0.1
-beta_update_method = "production"  # "production" or "random". Production chooses the beta value of the company with the highest production, random chooses a random beta value from the surviving companies.
-interest_update_method = "supply_demand"  # 1, 2, or "supply_demand". 1 uses the first derivative, 2 uses the second derivative, and "supply_demand" uses the median of the supply_demand_list to adjust the interest rate.
+beta_update_method = "random"  # "production" or "random". Production chooses the beta value of the company with the highest production, random chooses a random beta value from the surviving companies.
+interest_update_method = 2  # 1, 2, or "supply_demand". 1 uses the first derivative, 2 uses the second derivative, and "supply_demand" uses the median of the supply_demand_list to adjust the interest rate.
 
 if __name__ == "__main__":
     print("You ran the wrong script :D")
