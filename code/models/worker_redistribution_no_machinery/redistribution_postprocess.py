@@ -33,7 +33,6 @@ class PostProcessing():
             # System
             self.interest_rate = data_group["interest_rate"][:]
             self.went_bankrupt = data_group["went_bankrupt"][:]
-            self.unemployed = data_group["unemployed"][:]
             self.system_money_spent = data_group["system_money_spent"][:]
         
             # Attributes
@@ -46,7 +45,7 @@ class PostProcessing():
         self.time_values = np.arange(self.time_steps)
 
         
-    def _peaks(self):
+    def _peaks_from_system_money(self):
         # Find the amplitude and frequency of system_money_spent peaks using scipy find_peaks
         # Remove the first initial_values_skipped data points as they are warmup
         # Prominence: Take a peak and draw a horizontal line to the highest point between the peak and the next peak. The prominence is the height of the peak's summit above this horizontal line.
@@ -56,6 +55,15 @@ class PostProcessing():
         self.peak_idx, _ = find_peaks(x=system_money, height=5, distance=25, width=5, prominence=prominence)  # Height: Minimum y value, distance: Minimum x distance between peaks, prominence: 
         self.peak_vals = system_money[self.peak_idx]
         self.peak_idx += initial_values_skipped 
+
+
+    def _peaks(self):
+        # Get peaks from went_bankrupt
+        initial_values_skipped = np.min((1000, self.time_steps//2))
+        bankrupt = self.went_bankrupt / self.N
+        self.peak_idx, _ = find_peaks(x=bankrupt[initial_values_skipped:], height=0.2, prominence=0.1, distance=50)
+        self.peak_idx += initial_values_skipped
+        self.peak_vals = bankrupt[self.peak_idx]
 
 
     def _get_data(self):
@@ -94,5 +102,6 @@ class PostProcessing():
 
 if __name__ == "__main__":
     postprocess = PostProcessing(group_name)
-    postprocess.store_peak_over_parameter_space()
+    postprocess.store_peak_data()
+    # postprocess.store_peak_over_parameter_space()
     print("Peaks calculated and stored in file")
