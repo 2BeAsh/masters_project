@@ -26,6 +26,9 @@ class Workforce():
         
 
     def _initialize_market_variables(self) -> None:    
+        # Miscellaneous
+        self.salary_min = 1e-2  # Minimum salary allowed
+        
         # System variables
         self.interest_rate_free = 0.05
         self.interest_rate = self.interest_rate_free
@@ -34,24 +37,13 @@ class Workforce():
         # Company variables
         self.w = np.ones(self.N, dtype=int)  # Will redistribute workers before first timestep anyway
         self.d = np.zeros(self.N, dtype=float)  # Debt
-        self.salary = np.random.uniform(self.salary_increase, 1, self.N)  # Pick random salaries
+        self.salary = np.random.uniform(self.salary_min, 0.5, self.N)  # Pick random salaries
                 
-        # Worker variables
-        self.unemployed = self.W - self.w.sum()  # Every company starts with employees       
-
-        # Ghost company - for worker redistribution
-        self.salary_including_ghost_company = np.append(self.salary, np.min(self.salary))  # Include ghost company that corresponds to unemployed people
-        self.w_including_ghost_company = np.zeros(self.N + 1, dtype=int)  # Include ghost company that corresponds to unemployed people
-
         # Initial values
         self.PD = 0
         self.went_bankrupt = 0
         self.system_money_spent = 0
         self.system_money_spent_last_step = self.w @ self.salary
-        
-        # Other
-        self.negative_correction_factor = 1 / (1 - self.salary_increase)
-        self.salary_min = 1e-2  # Minimum salary allowed
 
 
     def _initialize_hist_arrays(self) -> None:
@@ -64,76 +56,29 @@ class Workforce():
         # System
         self.interest_rate_hist = np.zeros(self.time_steps, dtype=float)
         self.went_bankrupt_hist = np.zeros(self.time_steps, dtype=int)
-        self.unemployed_hist = np.zeros(self.time_steps, dtype=int)
         self.system_money_spent_hist = np.zeros(self.time_steps, dtype=float)
         
         # Initial values
-        self.w_hist[:, 0] = self.w * 1
-        self.d_hist[:, 0] = self.d * 1
+        self.w_hist[:, 0] = self.w
+        self.d_hist[:, 0] = self.d
         
-        self.salary_hist[:, 0] = self.salary * 1
-        self.interest_rate_hist[0] = self.interest_rate * 1
-        self.went_bankrupt_hist[0] = self.went_bankrupt * 1
-        self.unemployed_hist[0] = self.unemployed * 1
-        self.system_money_spent_hist[0] = self.system_money_spent * 1
+        self.salary_hist[:, 0] = self.salary
+        self.interest_rate_hist[0] = self.interest_rate
+        self.went_bankrupt_hist[0] = self.went_bankrupt
+        self.system_money_spent_hist[0] = self.system_money_spent
 
-    
-    def _unemployed(self): 
-        self.unemployed = self.W - self.w.sum()
-
-
-    def _employed(self):
-        self._unemployed()
-        self.employed = self.W - self.unemployed
-                
-        
-    def _ghost_company(self):
-        # Fire all workers
-        self.w_including_ghost_company[:] = 0
-
-        # Add the minimum salary as the salary for unemployment. People have an equal chance of choosing the worst salary as to stay unemployed
-        self.salary_including_ghost_company[:-1] = self.salary
-        self.salary_including_ghost_company[-1] = np.min(self.salary)
-        
     
     def _employment_probability(self) -> np.ndarray:
         """Probability for each company to get a worker. An additional "ghost company" is added to reflect unemployment. 
 
         Returns:
-            np.ndarray:: self.N + 1 sized array with probabilities for each company to get a worker.
+            np.ndarray:: self.N sized array with probabilities for each company to get a worker.
         """
-        # Include option for not choosing a company to work for i.e. stay unemployed.
-        # Have a false company that no one works for, and if a worker chooses this company, they are unemployed.
-        # prob_get_a_worker = self.salary_including_ghost_company ** 2 / (self.salary_including_ghost_company ** 2).sum()        
-        prob_get_a_worker = self.salary ** 2 / (self.salary ** 2).sum()        
-        
-        # Should this include the probability of bankruptcy?
-        # So p_ghost = min(s) + PD  #  or similar
+        prob_get_a_worker = self.salary / (self.salary).sum()        
         return prob_get_a_worker
 
 
-    def _redistribute_workers_ghost(self):
-        # Include option for not choosing a company to work for i.e. stay unemployed.
-        # Use a single "ghost company" to reflect unemployment
-        self.w[:] = 0  # "Fire" all workers
-        self._ghost_company()
-        
-        # All workers picks a company to work for with some probability
-        idx_each_worker_choose = np.random.choice(np.arange(self.N+1), size=self.W, replace=True, p=self._employment_probability())  # idx of companies that each worker chooses to work for
-        idx_company_that_hires_including_ghost_company, number_of_workers_hired_including_ghost_company = np.unique(idx_each_worker_choose, return_counts=True)
-        
-        # Get rid of ghost company
-        idx_company_that_hires, number_of_workers_hired = idx_company_that_hires_including_ghost_company[:-1], number_of_workers_hired_including_ghost_company[:-1]
-
-        # Update values
-        self.w[idx_company_that_hires] = number_of_workers_hired
-        
-        self._employed()
-
-
     def _redistribute_workers(self):
-        # Include option for not choosing a company to work for i.e. stay unemployed.
-        # Use a single "ghost company" to reflect unemployment
         self.w[:] = 0  # "Fire" all workers
         
         # All workers picks a company to work for with some probability
@@ -143,41 +88,14 @@ class Workforce():
         # Update values
         self.w[idx_company_that_hires] = number_of_workers_hired
         
-        self._employed()
-
-
-
-    def _employment_probability_alt(self) -> np.ndarray:
-        # OBS USE OTHER FORMULA
-        return self.salary ** 2 / (self.salary ** 2).sum()
-    
-
-    def _redistribute_workers_alt(self):
-        """Every company has a probability to employ a worker. Each worker draws a random company to attempt to work for. If it is not employed, it remains unemployed."""
-        # Fire all workers
-        self.w[:] = 0
-        
-        # Workers pick a company to attempt to work for
-        idx_workers_chosen_company = np.random.choice(np.arange(self.N), size=self.W, replace=True)  # Includes multiple of the same company
-        
-        # Get employment probabilities and random numbers to compare these with
-        company_employment_probability = self._employment_probability_alt()        
-        random_numbers = np.random.uniform(size=self.W)
-
-        # Loop over each company that the workers choose, and see if they are employed
-        for i, idx_chosen in enumerate(idx_workers_chosen_company):
-            if random_numbers[i] < company_employment_probability[idx_chosen]:
-                self.w[idx_chosen] += 1
-
 
     def _sell_and_salary(self):
-        self._employed()
         # Pick the indices of the companies that will sell
         idx_companies_selling = np.random.choice(np.arange(self.N), size=self.N, replace=True)
         # Find which companies that sells and how many times they do it
         idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
         # Find how much each of the chosen companies sell for and how much they pay in salary
-        sell_unique = self.w[idx_unique] * self.system_money_spent_last_step / self.employed  
+        sell_unique = self.w[idx_unique] * self.system_money_spent_last_step / self.W  
         salary_unique = self.salary[idx_unique] * self.w[idx_unique]
         # Multiply that by how many times they sold and paid salaries
         sell_unique_all = sell_unique * counts
@@ -201,25 +119,25 @@ class Workforce():
         """
         # Values for increased and decreased salary
         noise_factor = np.random.uniform(0, 1, size=self.N)
-        negative_correction_factor = self.salary_increase * noise_factor / (1 - self.salary_increase * noise_factor)
+        salary_increase_with_noise = self.salary_increase * noise_factor
+        negative_correction_factor = salary_increase_with_noise / (1 - salary_increase_with_noise)
         
         increased_salary_val = self.salary * (1 + negative_correction_factor)
-        decreased_salary_val = self.salary * (1 - self.salary_increase * noise_factor) 
+        decreased_salary_val = self.salary * (1 - salary_increase_with_noise) 
         
         # Find who wants to increase 
         delta_debt = self.d - self.d_hist[:, time_step - 1]
         companies_want_to_increase_salary = delta_debt <= 0        
         
-        # Make update
+        # Make update and set minimum salary
         self.salary = np.where(companies_want_to_increase_salary, increased_salary_val, decreased_salary_val)
-        
-        # Set minimum salary
         self.salary = np.maximum(self.salary, self.salary_min)
 
 
     def _bankruptcy(self):
-        # Goes bankrupt if min(w, m) < rd 
-        # bankrupt_idx = self.w < self.interest_rate * self.d
+        """Companies who pays more in debt than they earn in sellings goes bankrupt.
+        """
+        # Find companies that go bankrupt
         bankrupt_idx = self.w * self.system_money_spent / self.W < self.interest_rate * self.d
         number_of_companies_gone_bankrupt = bankrupt_idx.sum()  # True = 1, False = 0, so sum gives amount of bankrupt companies
 
@@ -234,7 +152,7 @@ class Workforce():
         idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
         if idx_surving_companies.size != 0:  # There are non-bankrupt companies            
             new_salary_idx = np.random.choice(idx_surving_companies, size=number_of_companies_gone_bankrupt, replace=True)
-            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-self.salary_increase, self.salary_increase, size=number_of_companies_gone_bankrupt)
+            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-0.5*self.salary_increase, 0.5*self.salary_increase, size=number_of_companies_gone_bankrupt)
         else:
             self.salary = np.random.uniform(self.salary_increase, 1, number_of_companies_gone_bankrupt)
         
@@ -262,15 +180,13 @@ class Workforce():
         self.salary_hist[:, time_step] = self.salary
 
         # System variables
-        self.interest_rate_hist[time_step] = self.interest_rate * 1
-        self._unemployed()
-        self.unemployed_hist[time_step] = self.unemployed * 1
-        self.went_bankrupt_hist[time_step] = self.went_bankrupt * 1
-        self.system_money_spent_hist[time_step] = self.system_money_spent * 1
+        self.interest_rate_hist[time_step] = self.interest_rate
+        self.went_bankrupt_hist[time_step] = self.went_bankrupt 
+        self.system_money_spent_hist[time_step] = self.system_money_spent 
         
         # Reset values
         self.went_bankrupt = 0  # Reset for next time step
-        self.system_money_spent_last_step = self.system_money_spent * 1
+        self.system_money_spent_last_step = self.system_money_spent  # For next time step
         self.system_money_spent = 0  # Reset for next time step
         
         
@@ -321,7 +237,6 @@ class Workforce():
             # System variables
             group.create_dataset("interest_rate", data=self.interest_rate_hist)
             group.create_dataset("went_bankrupt", data=self.went_bankrupt_hist)
-            group.create_dataset("unemployed", data=self.unemployed_hist)
             group.create_dataset("system_money_spent", data=self.system_money_spent_hist)
             
             # Attributes
