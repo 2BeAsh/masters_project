@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import SymLogNorm
+from matplotlib.colors import SymLogNorm, LogNorm
 from pathlib import Path
 import h5py
 import functools
@@ -57,11 +57,11 @@ class BankVisualization(general_functions.PlotMethods):
         fig, (ax, ax1) = plt.subplots(nrows=2)
 
         ax.plot(self.time_values, w_plot)
-        ax.set(ylabel="Number of workers", title="Workforce")
+        ax.set(ylabel="Log Number of workers", title="Workforce", xlim=(0, self.time_steps), yscale="log")
         ax.grid()
 
         ax1.plot(self.time_values, d_plot)
-        ax1.set(ylabel="Price", title="Debt", xlabel="Time")
+        ax1.set(ylabel="Log Price", title="Debt", xlabel="Time", xlim=(0, self.time_steps), yscale="symlog")
         ax1.grid()
         
         # Display parameter values
@@ -91,7 +91,7 @@ class BankVisualization(general_functions.PlotMethods):
         ax.plot(self.time_values, w_mean, label=r"$w$")
 
         # Setup
-        ax.set(xlabel="Time", ylabel="Log Price", title="Mean values", yscale="log")
+        ax.set(xlabel="Time", ylabel="Log Price", title="Mean values", yscale="log", xlim=(0, self.time_steps))
         ax.grid()
         self._add_legend(ax, ncols=4, y=0.9)
         
@@ -105,24 +105,19 @@ class BankVisualization(general_functions.PlotMethods):
     def plot_interest_rates_unemployed(self):
         """Plot the interest rate and the fraction of companies gone bankrupt over time.
         """
-        fig, (ax, ax1, ax2) = plt.subplots(nrows=3)
+        fig, (ax, ax1) = plt.subplots(nrows=2)
 
         # ax Interest rate and free interest rate
         ax.axhline(y=0.05, ls="--", label="Interest rate free")
         ax.plot(self.time_values, self.interest_rate, label="Interest rate", c="firebrick")
-        ax.set(ylabel="Interest rate")
+        ax.set(ylabel="Interest rate", xlim=(0, self.time_steps))
         ax.grid()
         ax.legend(bbox_to_anchor=(0.5, 1), loc="lower center", fontsize=10, ncols=3)
         
         # ax1 bankruptcies
         ax1.plot(self.time_values, self.went_bankrupt / self.N, label="Bankruptcies")
-        ax1.set(ylabel="Bankrupt fraction", title="Bankruptcies")
+        ax1.set(ylabel="Bankrupt fraction", title="Bankruptcies", xlim=(0, self.time_steps))
         ax1.grid()
-        
-        # ax2 unemploed
-        ax2.plot(self.time_values, self.unemployed / self.W)
-        ax2.set(xlabel="Time", ylabel="Fraction unemployed", title="Fraction of workforce unemployed")
-        ax2.grid()
         
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
@@ -169,33 +164,7 @@ class BankVisualization(general_functions.PlotMethods):
         # Save and show figure
         self._save_fig(fig, "hist")        
         if self.show_plots: plt.show()
-        
-        
-    def plot_salary(self):
-        fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(12, 10))
-        
-        # All companies' salary over time
-        # im = ax.imshow(self.s, cmap="magma")
-        # ax.set(xlabel="Time", ylabel="Company", title="Salary over time")
-        # fig.colorbar(im)
-        
-        # ax1 - Mean salary over time
-        ax1.plot(self.time_values, np.mean(self.s, axis=0))
-        ax1.set(xlabel="Time", ylabel="Log Price", title="Mean salary over time", xlim=(0, self.time_steps), yscale="log")
-        ax1.grid()
-        
-        # ax2 - Delta d over time
-        delta_d = np.diff(self.d, axis=1)
-        im2 = ax2.imshow(delta_d, cmap="coolwarm", norm=SymLogNorm(linthresh=1e-6, linscale=1e-6))
-        ax2.set(xlabel="Time", ylabel="Company", title="Delta debt over time")
-        fig.colorbar(im2)
-        
-        # Add parameter text
-        if self.add_parameter_text_to_plot: self._add_parameters_text(ax1)
-        # Save and show
-        self._save_fig(fig, "salary")
-        if self.show_plots: plt.show()
-        
+                
         
     def plot_production_capacity(self):
         w_final = self.w[:, -1]
@@ -204,16 +173,13 @@ class BankVisualization(general_functions.PlotMethods):
         
         fig, ax  = plt.subplots()
         counts, edges, _ = ax.hist(w_final, bins=bins, label=r"$w$", alpha=0.7)
-        ax.set(xlabel="Amount of workers", ylabel="Number of companies", title="Worker and machine distributions at final time")
+        ax.set(xlabel="Amount of workers", ylabel="Number of companies", title="Worker distribution at final time")
         ax.grid()
         
         # xticks
         number_of_xticks = 10
         xticks = np.linspace(0, max_val, number_of_xticks, dtype=int)
         ax.set_xticks(xticks)
-        
-        # Legend
-        self._add_legend(ax, ncols=2, y=0.9)
         
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
@@ -225,7 +191,7 @@ class BankVisualization(general_functions.PlotMethods):
     def plot_unemployed(self):
         fig, ax = plt.subplots()
         ax.plot(self.time_values, self.unemployed / self.W)
-        ax.set(xlabel="Time", ylabel="Fraction", title="Fraction of workforce unemployed")
+        ax.set(xlabel="Time", ylabel="Fraction", title="Fraction of workforce unemployed", xlim=(0, self.time_steps))
         ax.grid()
         
         # Add parameters text
@@ -235,16 +201,29 @@ class BankVisualization(general_functions.PlotMethods):
         if self.show_plots: plt.show()
 
 
-    def plot_system_money(self):
-        """Plot system money spent, fraction employed and inflation
+    def plot_system_money_mean_salary(self):
+        """Plot system money spent and mean salary. Plot the fraction of companies bankrupt on top of the mean salary plot.
         """
         
-        fig, ax0 = plt.subplots(nrows=1)
-        
+        fig, (ax0, ax1) = plt.subplots(nrows=2)
+        xlim = (0, self.time_steps)
         # ax0 - System money spent
         ax0.plot(self.time_values, self.system_money_spent)
-        ax0.set(ylabel="Log $", title="System money spent", yscale="log")
+        ax0.set(ylabel="Log $", title="System money spent", yscale="log", xlim=xlim)
         ax0.grid()
+                
+        # ax1 - Mean salary and bankruptcy fraction
+        ax1_2 = ax1.twinx()
+        ax1.plot(self.time_values, np.mean(self.s, axis=0), c="rebeccapurple")
+        ax1.axhline(y=self.rho, ls="--", c="grey", label=r"Min $\Delta s$")        
+        ax1.set(xlabel="Time", ylabel="Log Price", title="Mean salary and bankruptcy", xlim=xlim, yscale="log")
+        ax1.grid()
+        ax1.tick_params(axis='y', labelcolor="rebeccapurple")
+        ax1.set_ylabel(ylabel="Mean Salary", color="rebeccapurple")        
+        # Plot the bankruptcy fraction on a seperate axis
+        ax1_2.tick_params(axis='y', labelcolor="red")
+        ax1_2.set_ylabel(ylabel="Bankruptcy fraction", color="red")
+        ax1_2.plot(self.time_values, self.went_bankrupt / self.N, c="red")
                 
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax0)
@@ -276,6 +255,46 @@ class BankVisualization(general_functions.PlotMethods):
         if self.show_plots: plt.show()
         
 
+    def salary_analysis(self):
+        """Plot salary of all companies over time, their difference from the mean salary and the mean salary.
+
+        """
+        # Calculations
+        mean_salary = np.mean(self.s, axis=0)
+        salary_diff = (self.s - mean_salary) / mean_salary
+        
+        # Remove first 1000 values
+        salary = self.s[:, 1000:]
+        salary_diff = salary_diff[:, 1000:]
+        mean_salary = mean_salary[1000:]
+        
+        # Create figure
+        xlim = (0, self.time_steps-1000)
+        fig, (ax0, ax1, ax2) = plt.subplots(nrows=3)
+
+        # ax0 - mean salary
+        ax0.plot(mean_salary)
+        ax0.set(ylabel="Log Price", title="Mean salary", yscale="log", xlim=xlim)
+        ax0.grid()
+        
+        # ax1 - company salary values
+        im1 = ax1.imshow(salary, aspect="auto", norm=LogNorm(), cmap="magma")
+        ax1.set(ylabel="Companies", title="All company salaries", xlim=xlim)
+        fig.colorbar(im1, ax=ax1)        
+        
+        # ax2 - salary deviation
+        im2 = ax2.imshow(salary_diff, aspect="auto", norm=SymLogNorm(linscale=1e-6, linthresh=1e-6), cmap="coolwarm")
+        ax2.set(xlabel="Time", ylabel="Companies", title="Salary percent difference from mean", xlim=xlim)
+        fig.colorbar(im2, ax=ax2)
+        
+        # Add parameters text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax0)
+        # Save and show
+        self._save_fig(fig, "salary_analysis")
+        if self.show_plots: plt.show()
+        
+
+    # -- Peak analysis --
     def _load_peak_data(self):
       # Empty lists
         self.system_money_spent_list = []
@@ -283,8 +302,8 @@ class BankVisualization(general_functions.PlotMethods):
         self.peak_idx_list = []
 
         def _replace_salary_increase(group_name, new_rho_val):
-            parts = group_name.split("rho")
-            new_group_name = parts[0] + f"rho{new_rho_val}"
+            parts = group_name.split("ds")
+            new_group_name = parts[0] + f"ds{new_rho_val}"
             return new_group_name
         
         
@@ -313,17 +332,19 @@ class BankVisualization(general_functions.PlotMethods):
         nrows = number_of_salary_values // ncols
         
         def _plot_func(axis, idx):
-            if (self.system_money_spent_list[idx] <= 0).any():
-                print("Contained zero or negative values")
-            
             axis.plot(self.time_values, self.system_money_spent_list[idx])
-            axis.plot(self.peak_idx_list[idx], self.peak_list[idx], "x")
-            axis.set(ylabel="Log System money spent", title=fr"$\rho=${self.parameter_space[idx]}", yscale="log", xlabel="Time")
+            # axis.plot(self.peak_idx_list[idx], self.peak_list[idx], "x")
+            axis.set(ylabel="Log Price", title=fr"$\rho=${self.parameter_space[idx]}", yscale="log", xlabel="Time", xlim=(0, self.time_steps))
             axis.grid()
         
         fig, ax = plt.subplots(ncols=ncols, nrows=nrows)
+        # Transform ax to a 2d array if it is not already
+        if nrows == 1: ax = ax.reshape(1, -1)
+        
         for i in range(ncols*nrows):
             _plot_func(ax[i // ncols, i % ncols], i)
+        
+        fig.suptitle(r"System money spent for different $\Delta s$ values")
         
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax[0, 0])
@@ -401,11 +422,13 @@ class BankVisualization(general_functions.PlotMethods):
     
 
     def animate_size_distribution(self):
+        self.w = self.w[:, 4000:]  # Remove first 4000 time steps
+        
         # Bin data
-        bins = np.arange(0, int(self.p.max()) + 1, 1)
+        bins = np.arange(0, int(self.w.max()) + 1, 1)
         # Figure setup        
         fig, ax = plt.subplots()
-        _, _, bar_container = ax.hist(self.p[:, 0], bins)  # Initial histogram 
+        _, _, bar_container = ax.hist(self.w[:, 0], bins)  # Initial histogram 
         ax.set(xlim=(bins[0], bins[-1]), title="Time = 0", xlabel="Number of employees", ylabel="Counts")
         ax.grid()
         xticks = np.linspace(0, bins[-1], 10, dtype=int)
@@ -417,7 +440,7 @@ class BankVisualization(general_functions.PlotMethods):
         def animate(i, bar_container):
             """Frame animation function for creating a histogram."""
             # Histogram
-            data = self.p[:, i]
+            data = self.w[:, i]
             n, _ = np.histogram(data, bins)
             for count, rect in zip(n, bar_container.patches):
                 rect.set_height(count)
@@ -439,22 +462,23 @@ if __name__ == "__main__":
     add_parameter_text_to_plot = True
     bank_vis = BankVisualization(group_name, show_plots, add_parameter_text_to_plot)
     
+    
     print("Started plotting")
     plot_company = True
     if plot_company:
         # bank_vis.plot_companies(4)
         # bank_vis.plot_means()
         # bank_vis.plot_interest_rates_unemployed()
-        # bank_vis.plot_system_money()
-        # bank_vis.plot_production_capacity()
-        # bank_vis.plot_salary()
-        bank_vis.plot_debt()
+        bank_vis.plot_system_money_mean_salary()
+        bank_vis.plot_production_capacity()
+        bank_vis.salary_analysis()
+        # bank_vis.plot_debt()
         
     # -- Peak analysis -- 
     plot_peak = False
     if plot_peak:
         bank_vis.parameter_peak()
-        bank_vis.peak_frequency_vs_parameter()
+        # bank_vis.peak_frequency_vs_parameter()
         
         # bank_vis.peak_first_crash()  # Basically identical to frequency 
     
