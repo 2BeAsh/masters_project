@@ -393,7 +393,7 @@ class Workforce():
             
 # Define variables for other files to use
 number_of_companies = 250
-number_of_workers = 2500
+number_of_workers = 5000
 time_steps = 7500
 machine_cost = 0.01
 salary_increase = 0.1
