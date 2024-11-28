@@ -277,10 +277,20 @@ class BankVisualization(general_functions.PlotMethods):
         xlim = (0, salary.shape[1])
         fig, (ax0, ax1, ax2, ax3) = plt.subplots(nrows=4)
 
-        # ax0 - mean salary
-        ax0.plot(mean_salary)
-        ax0.set(ylabel="Log Price", title="Mean salary", yscale="log", xlim=xlim)
+        # ax0 - mean salary and bankruptcy fraction
+        color_salary = "rebeccapurple"
+        ax0.plot(mean_salary, c=color_salary)
+        ax0.set(title="Mean salary and bankruptcy", yscale="log", xlim=xlim)
+        ax0.tick_params(axis='y', labelcolor=color_salary)
+        ax0.set_ylabel(ylabel="Log Mean Salary", color=color_salary)
         ax0.grid()
+        
+        ax0_2 = ax0.twinx()
+        color_bankrupt = "darkred"
+        ax0_2.plot(self.went_bankrupt / self.N, c=color_bankrupt, alpha=0.7)
+        ax0_2.set_ylabel(ylabel="Bankruptcy", color=color_bankrupt)
+        ax0_2.tick_params(axis='y', labelcolor=color_bankrupt)
+
         
         # ax1 - salary standard deviation
         ax1.plot(salary_fano)  
@@ -483,7 +493,7 @@ if __name__ == "__main__":
     if plot_company:
         # bank_vis.plot_companies(4)
         # bank_vis.plot_means()
-        bank_vis.plot_interest_rates()
+        # bank_vis.plot_interest_rates()
         # bank_vis.plot_system_money_mean_salary()
         # bank_vis.plot_production_capacity()
         bank_vis.salary_analysis()
