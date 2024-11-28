@@ -152,7 +152,7 @@ class Workforce():
         idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
         if idx_surving_companies.size != 0:  # There are non-bankrupt companies            
             new_salary_idx = np.random.choice(idx_surving_companies, size=number_of_companies_gone_bankrupt, replace=True)
-            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-0.5*self.salary_increase, 0.5*self.salary_increase, size=number_of_companies_gone_bankrupt)
+            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-0.2*self.salary_increase, 0.2*self.salary_increase, size=number_of_companies_gone_bankrupt)
         else:
             self.salary = np.random.uniform(self.salary_increase, 1, number_of_companies_gone_bankrupt)
         
