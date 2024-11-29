@@ -264,22 +264,24 @@ class BankVisualization(general_functions.PlotMethods):
         # Calculations
         mean_salary = np.mean(self.s, axis=0)
         salary_diff = (self.s - mean_salary) / mean_salary
-        salary_fano = np.var(self.s, axis=0) / mean_salary
+        salary_spread = np.std(self.s, axis=0) / mean_salary
         
         # Remove first 1000 values
         salary = self.s
         # salary = self.s[:, 1000:]
         # salary_diff = salary_diff[:, 1000:]
         # mean_salary = mean_salary[1000:]
-        # salary_fano = salary_fano[1000:]
+        # salary_spread = salary_spread[1000:]
         
         # Create figure
         xlim = (0, salary.shape[1])
-        fig, (ax0, ax1, ax2, ax3) = plt.subplots(nrows=4)
+        # fig, (ax0, ax1, ax2, ax3) = plt.subplots(nrows=4)
+        fig, (ax0, ax1) = plt.subplots(nrows=2)
 
         # ax0 - mean salary and bankruptcy fraction
         color_salary = "rebeccapurple"
         ax0.plot(mean_salary, c=color_salary)
+        ax0.axhline(self.rho, ls="--", c="grey", label=r"Mutation magnitude")
         ax0.set(title="Mean salary and bankruptcy", yscale="log", xlim=xlim)
         ax0.tick_params(axis='y', labelcolor=color_salary)
         ax0.set_ylabel(ylabel="Log Mean Salary", color=color_salary)
@@ -290,22 +292,21 @@ class BankVisualization(general_functions.PlotMethods):
         ax0_2.plot(self.went_bankrupt / self.N, c=color_bankrupt, alpha=0.7)
         ax0_2.set_ylabel(ylabel="Bankruptcy", color=color_bankrupt)
         ax0_2.tick_params(axis='y', labelcolor=color_bankrupt)
-
         
         # ax1 - salary standard deviation
-        ax1.plot(salary_fano)  
-        ax1.set(xlabel="Time", ylabel="Log Price", title="Salary Fano factor", yscale="log", xlim=xlim)      
+        ax1.plot(salary_spread)  
+        ax1.set(xlabel="Time", ylabel="Log Price", title="Salary spread (std/mean)", yscale="log", xlim=xlim)      
         ax1.grid()
         
-        # ax2 - company salary values
-        im2 = ax2.imshow(salary, aspect="auto", norm=LogNorm(), cmap="magma")
-        ax2.set(ylabel="Companies", title="All company salaries", xlim=xlim)
-        fig.colorbar(im2, ax=ax2)        
+        # # ax2 - company salary values
+        # im2 = ax2.imshow(salary, aspect="auto", norm=LogNorm(), cmap="magma")
+        # ax2.set(ylabel="Companies", title="All company salaries", xlim=xlim)
+        # fig.colorbar(im2, ax=ax2)        
         
-        # ax3 - salary percent difference from mean
-        im3 = ax3.imshow(salary_diff, aspect="auto", norm=SymLogNorm(linscale=1e-6, linthresh=1e-6), cmap="coolwarm")
-        ax3.set(ylabel="Companies", title="Salary percent difference from mean", xlim=xlim)
-        fig.colorbar(im3, ax=ax3)
+        # # ax3 - salary percent difference from mean
+        # im3 = ax3.imshow(salary_diff, aspect="auto", norm=SymLogNorm(linscale=1e-6, linthresh=1e-6), cmap="coolwarm")
+        # ax3.set(ylabel="Companies", title="Salary percent difference from mean", xlim=xlim)
+        # fig.colorbar(im3, ax=ax3)
         
         # Plot the peaks as vertical lines on ax0 and ax1
         if self.peak_idx is not None:
@@ -313,6 +314,8 @@ class BankVisualization(general_functions.PlotMethods):
                 ax0.axvline(x=peak, ls="--", c="grey", alpha=0.7)
                 ax1.axvline(x=peak, ls="--", c="grey", alpha=0.7)
         
+        # Legend
+        self._add_legend(ax0, y=0.9, ncols=1)
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax0)
         # Save and show
