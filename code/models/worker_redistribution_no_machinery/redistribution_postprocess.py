@@ -61,7 +61,7 @@ class PostProcessing():
         # Get peaks from went_bankrupt
         initial_values_skipped = np.min((1000, self.time_steps//2))
         bankrupt = self.went_bankrupt / self.N
-        self.peak_idx, _ = find_peaks(x=bankrupt[initial_values_skipped:], height=0.2, prominence=0.1, distance=50)
+        self.peak_idx, _ = find_peaks(x=bankrupt[initial_values_skipped:], height=0.05, prominence=0.025, distance=50)
         self.peak_idx += initial_values_skipped
         self.peak_vals = bankrupt[self.peak_idx]
 
