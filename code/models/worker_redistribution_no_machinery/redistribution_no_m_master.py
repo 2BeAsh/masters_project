@@ -19,7 +19,7 @@ class Workforce():
         self.dir_path_output = Path.joinpath(self.dir_path, "output")
         self.dir_path_image = Path.joinpath(self.dir_path, "images", "image_redistribution_no_m")
         self.dir_path_image.mkdir(parents=True, exist_ok=True)
-        self.salary_min = 1e-3  # Minimum salary allowed
+        self.salary_min = 1e-4  # Minimum salary allowed
         self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.salary_increase}_smin{self.salary_min}"
         
         # Seed
@@ -134,7 +134,7 @@ class Workforce():
         
         # Make update and set minimum salary
         self.salary = np.where(companies_want_to_increase_salary, increased_salary_val, decreased_salary_val)
-        self.salary = np.maximum(self.salary, 1e-6)  # self.salary_min
+        self.salary = np.maximum(self.salary, self.salary_min)  # self.salary_min
 
 
     def _bankruptcy(self):
@@ -160,7 +160,7 @@ class Workforce():
             self.salary = np.random.uniform(self.salary_increase, 1, number_of_companies_gone_bankrupt)
         
         # Set minimum salary
-        self.salary = np.maximum(self.salary, 1e-6)  # self.salary_min
+        self.salary = np.maximum(self.salary, self.salary_min)  # self.salary_min
         
        
     def _probability_of_default(self, time_step, T) -> None:
