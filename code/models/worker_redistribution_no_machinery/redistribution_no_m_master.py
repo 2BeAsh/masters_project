@@ -19,7 +19,8 @@ class Workforce():
         self.dir_path_output = Path.joinpath(self.dir_path, "output")
         self.dir_path_image = Path.joinpath(self.dir_path, "images", "image_redistribution_no_m")
         self.dir_path_image.mkdir(parents=True, exist_ok=True)
-        self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.salary_increase}"
+        self.salary_min = 1e-3  # Minimum salary allowed
+        self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.salary_increase}_smin{self.salary_min}"
         
         # Seed
         np.random.seed(self.seed)  
@@ -27,7 +28,6 @@ class Workforce():
 
     def _initialize_market_variables(self) -> None:    
         # Miscellaneous
-        self.salary_min = 1e-2  # Minimum salary allowed
         
         # System variables
         self.interest_rate_free = 0.05
@@ -37,7 +37,7 @@ class Workforce():
         # Company variables
         self.w = np.ones(self.N, dtype=int)  # Will redistribute workers before first timestep anyway
         self.d = np.zeros(self.N, dtype=float)  # Debt
-        self.salary = np.random.uniform(self.salary_min, 0.5, self.N)  # Pick random salaries
+        self.salary = np.random.uniform(0.5e-2, 3e-1, self.N)  # Pick random salaries
                 
         # Initial values
         self.PD = 0
@@ -74,7 +74,10 @@ class Workforce():
         Returns:
             np.ndarray:: self.N sized array with probabilities for each company to get a worker.
         """
-        prob_get_a_worker = self.salary / (self.salary).sum()        
+        if self.salary.sum() != 0:
+            prob_get_a_worker = self.salary / (self.salary).sum()
+        else: 
+            prob_get_a_worker = np.ones(self.N) / self.N
         return prob_get_a_worker
 
 
@@ -131,7 +134,7 @@ class Workforce():
         
         # Make update and set minimum salary
         self.salary = np.where(companies_want_to_increase_salary, increased_salary_val, decreased_salary_val)
-        self.salary = np.maximum(self.salary, self.salary_min)
+        self.salary = np.maximum(self.salary, 1e-6)  # self.salary_min
 
 
     def _bankruptcy(self):
@@ -152,12 +155,12 @@ class Workforce():
         idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
         if idx_surving_companies.size != 0:  # There are non-bankrupt companies            
             new_salary_idx = np.random.choice(idx_surving_companies, size=number_of_companies_gone_bankrupt, replace=True)
-            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-0.2*self.salary_increase, 0.2*self.salary_increase, size=number_of_companies_gone_bankrupt)
+            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-self.salary_increase, self.salary_increase, size=number_of_companies_gone_bankrupt)
         else:
             self.salary = np.random.uniform(self.salary_increase, 1, number_of_companies_gone_bankrupt)
         
         # Set minimum salary
-        self.salary = np.maximum(self.salary, self.salary_min)
+        self.salary = np.maximum(self.salary, 1e-6)  # self.salary_min
         
        
     def _probability_of_default(self, time_step, T) -> None:
@@ -169,6 +172,7 @@ class Workforce():
     
     def _adjust_interest_for_default(self, time_step) -> None:
         # Using the probability of default (synonymous with bankruptcy) to adjust the interest rate
+        # self.time_scale = int(1 / self.interest_rate)
         self._probability_of_default(time_step, T=self.time_scale)
         self.interest_rate = (1 + self.interest_rate_free) / (1 - self.PD) - 1 
         
@@ -264,7 +268,7 @@ class Workforce():
 # Define variables for other files to use
 number_of_companies = 250
 number_of_workers = 5000
-time_steps = 10_000
+time_steps = 20_000
 salary_increase = 0.025
 salary_increase_space = np.array([0.005, 0.01, 0.03, 0.05])  # At around 0.08 starts to diverge
 seed = None
