@@ -5,13 +5,21 @@ import h5py
 
 
 class Workforce():
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, time_steps, salary_increase_space=np.linspace(0.01, 0.5, 5), seed=None):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, time_steps, ds_space, rf_space, seed=None):
+        # Set variables
         self.N = number_of_companies
         self.W = number_of_workers 
         self.salary_increase = salary_increase
+        self.interest_rate_free = interest_rate_free
         self.time_steps = time_steps
-        self.salary_increase_space = salary_increase_space  # Used in case the store_peak_rho_space method is not called
+        self.ds_space = ds_space  # Used in case the store_peak_rho_space method is not called
+        self.rf_space = rf_space
         self.seed = seed
+        
+        # Time scale function
+        self._func_time_scale = self._time_scale_0  # Default time scale function
+        # self._func_time_scale = self._time_scale_x
+        # self._func_time_scale = self._time_scale_inverse_r 
         
         # Local paths for saving files
         file_path = Path(__file__)
@@ -19,20 +27,28 @@ class Workforce():
         self.dir_path_output = Path.joinpath(self.dir_path, "output")
         self.dir_path_image = Path.joinpath(self.dir_path, "images", "image_redistribution_no_m")
         self.dir_path_image.mkdir(parents=True, exist_ok=True)
-        self.salary_min = 1e-4  # Minimum salary allowed
-        self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.salary_increase}_smin{self.salary_min}"
+        self.salary_min = 1e-8  # Minimum salary allowed
+        self.group_name = self._get_group_name()
+        
+        # File name and path
+        file_name = "redistribution_no_m_simulation_data.h5"
+        self.file_path = self.dir_path_output / file_name
         
         # Seed
         np.random.seed(self.seed)  
         
 
+    def _get_group_name(self) -> str:
+        func_name = self._func_time_scale.__name__.replace("_", "")
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.salary_increase:.3f}_rf{self.interest_rate_free:.3f}_{func_name}"
+
+
     def _initialize_market_variables(self) -> None:    
         # Miscellaneous
         
         # System variables
-        self.interest_rate_free = 0.05
         self.interest_rate = self.interest_rate_free
-        self.time_scale = 1
+
 
         # Company variables
         self.w = np.ones(self.N, dtype=int)  # Will redistribute workers before first timestep anyway
@@ -155,12 +171,26 @@ class Workforce():
         idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
         if idx_surving_companies.size != 0:  # There are non-bankrupt companies            
             new_salary_idx = np.random.choice(idx_surving_companies, size=number_of_companies_gone_bankrupt, replace=True)
-            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-self.salary_increase, self.salary_increase, size=number_of_companies_gone_bankrupt)
+            # self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-self.salary_increase, self.salary_increase, size=number_of_companies_gone_bankrupt)
+            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-0.01, 0.01, size=number_of_companies_gone_bankrupt)
         else:
             self.salary = np.random.uniform(self.salary_increase, 1, number_of_companies_gone_bankrupt)
         
         # Set minimum salary
         self.salary = np.maximum(self.salary, self.salary_min)  # self.salary_min
+        
+       
+    def _time_scale_0(self, **kwargs):
+        return 0
+    
+    
+    def _time_scale_x(self, **kwargs):
+        x = kwargs["x"]
+        return x
+    
+    
+    def _time_scale_inverse_r(self, **kwargs):
+        return int(1 / self.interest_rate)
         
        
     def _probability_of_default(self, time_step, T) -> None:
@@ -172,7 +202,7 @@ class Workforce():
     
     def _adjust_interest_for_default(self, time_step) -> None:
         # Using the probability of default (synonymous with bankruptcy) to adjust the interest rate
-        # self.time_scale = int(1 / self.interest_rate)
+        self.time_scale = self._func_time_scale(**{"x": 50})
         self._probability_of_default(time_step, T=self.time_scale)
         self.interest_rate = (1 + self.interest_rate_free) / (1 - self.PD) - 1 
         
@@ -220,12 +250,8 @@ class Workforce():
         # Check if output directory exists
         self.dir_path_output.mkdir(parents=True, exist_ok=True)
         
-        # File name and path
-        file_name = "redistribution_no_m_simulation_data.h5"
-        file_path = self.dir_path_output / file_name
-        
         # If the exact filename already exists, open in write, otherwise in append mode
-        with h5py.File(file_path, "a") as f:
+        with h5py.File(self.file_path, "a") as f:
             # If the group already exists, delete it
             if self.group_name in f:
                 del f[self.group_name]
@@ -246,7 +272,9 @@ class Workforce():
             # Attributes
             group.attrs["W"] = self.W
             group.attrs["salary_increase"] = self.salary_increase
-            group.attrs["salary_increase_space"] = self.salary_increase_space
+            group.attrs["interest_rate_free"] = self.interest_rate_free
+            group.attrs["rf_space"] = self.rf_space
+            group.attrs["ds_space"] = self.ds_space
 
 
     def store_data_over_parameter_space(self):
@@ -257,30 +285,67 @@ class Workforce():
         np.random.seed(random_seed)
         
         # Depending on whether rho or machine cost is investigated, change the variable
-        N_sim = len(self.salary_increase_space)
-        for i, rho in enumerate(self.salary_increase_space):
+        N_sim = len(self.ds_space)
+        for i, rho in enumerate(self.ds_space):
             print(f"{i+1}/{N_sim}")
             self.salary_increase = rho
-            self.group_name = f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{rho}"
+            self.group_name = self._get_group_name()
             self.store_data()
+            
+    
+    def store_data_s_min(self):
+        salary_min_list = [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3]       
+        for s_min in salary_min_list:
+            self.salary_min = s_min
+            self.group_name = self._get_group_name() + f"_smin{s_min}"
+            self.store_data()
+            
+    
+    def store_data_rf_and_ds(self):        
+        total_iterations = len(self.ds_space) * len(self.rf_space)
+        
+        for i, ds in enumerate(self.ds_space):
+            self.salary_increase = ds
+            for j, r_f in enumerate(self.rf_space):
+                # Get data
+                self.interest_rate_free = r_f
+                self.group_name = self._get_group_name()
+                self.store_data()
+                
+                print(f"{i*len(self.rf_space) + j + 1}/{total_iterations}")
 
+
+    def store_data_time_scale(self):
+        func_time_scale_list = [self._time_scale_0, self._time_scale_x, self._time_scale_inverse_r]
+        for func_time_scale in func_time_scale_list:
+            self._func_time_scale = func_time_scale
+            self.group_name =  self._get_group_name() + f"{func_time_scale.__name__}"
+            self.store_data()
+        
             
 # Define variables for other files to use
 number_of_companies = 250
 number_of_workers = 5000
 time_steps = 20_000
-salary_increase = 0.025
-salary_increase_space = np.array([0.005, 0.01, 0.03, 0.05])  # At around 0.08 starts to diverge
+interest_rate_free = 0.05
+salary_increase = 0.05
+ds_space = np.linspace(0.01, 0.06, 15)  # Good range: 0.008 < ds < 0.08 
+rf_space = np.linspace(0.01, 0.1, len(ds_space))  # Good range: 0.01 < rf < ?
+
 seed = None
 
 # Other files need some variables
-workforce = Workforce(number_of_companies, number_of_workers, salary_increase, time_steps, salary_increase_space, seed)
+workforce = Workforce(number_of_companies, number_of_workers, salary_increase, interest_rate_free, time_steps, ds_space, rf_space, seed)
 
 dir_path_output = workforce.dir_path_output
 dir_path_image = workforce.dir_path_image
 group_name = workforce.group_name
 
 if __name__ == "__main__":
-    workforce.store_data()
+    # workforce.store_data()
+    
     # workforce.store_data_over_parameter_space()
+    # workforce.store_data_s_min()
+    workforce.store_data_rf_and_ds()
+    # workforce.store_data_time_scale()
     print("Stored Values")

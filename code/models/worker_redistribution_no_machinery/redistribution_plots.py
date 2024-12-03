@@ -6,15 +6,18 @@ import h5py
 import functools
 import matplotlib.animation as animation
 
+from scipy.signal import find_peaks
+
 # My files
 import general_functions
-from redistribution_no_m_master import dir_path_output, dir_path_image, group_name
+from redistribution_no_m_master import dir_path_output, dir_path_image, group_name, ds_space, rf_space
 
 
 class BankVisualization(general_functions.PlotMethods):
     def __init__(self, group_name, show_plots, add_parameter_text_to_plot):
         super().__init__(group_name)
         self.group_name = group_name
+        self.T_func_name = self.group_name.split("_")[-1].replace("_", "")
         self.show_plots = show_plots
         self.add_parameter_text_to_plot = add_parameter_text_to_plot
         
@@ -25,7 +28,7 @@ class BankVisualization(general_functions.PlotMethods):
         
         # Load data        
         with h5py.File(self.data_path, "r") as file:
-            data_group = file[group_name]
+            data_group = file[self.group_name]
             # Print the names of all groups in file
             self.filename = data_group.name.split("/")[-1]
             
@@ -44,18 +47,22 @@ class BankVisualization(general_functions.PlotMethods):
                 self.peak_idx = data_group["peak_idx"][:]
                 self.peak_vals = data_group["peak_vals"][:]
             except KeyError:
-                print("No peak data found in file")
+                print("No peak data found in main file")
                 self.peak_idx = None
                 self.peak_vals = None
         
             # Attributes
-            self.rho = data_group.attrs["salary_increase"]
-            self.salary_increase_space = data_group.attrs["salary_increase_space"]
+            self.ds = data_group.attrs["salary_increase"]
+            self.rf = data_group.attrs["interest_rate_free"]
             self.W = data_group.attrs["W"]
             
         self.N = self.w.shape[0]
         self.time_steps = self.w.shape[1]
         self.time_values = np.arange(self.time_steps)
+
+    
+    def _get_group_name(self) -> str:
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds:.3f}_rf{self.rf:.3f}_" + self.T_func_name
 
     
     def plot_companies(self, N_plot):
@@ -218,10 +225,11 @@ class BankVisualization(general_functions.PlotMethods):
         ax1_2 = ax1.twinx()
         ax1_2.tick_params(axis='y', labelcolor="red")
         ax1_2.set_ylabel(ylabel="Bankruptcy fraction", color="red")
-        ax1_2.plot(self.time_values, self.went_bankrupt / self.N, c="red", alpha=1)
+        ax1_2.plot(self.time_values, self.went_bankrupt / self.N, c="red", alpha=1)  # Bankruptcy fraction on twin axis
+        
         # Mean salary
-        ax1.plot(self.time_values, np.mean(self.s, axis=0), c="rebeccapurple", alpha=1)
-        ax1.axhline(y=self.rho, ls="--", c="grey", label=r"$\Delta s$")        
+        ax1.plot(self.time_values, np.mean(self.s, axis=0), c="rebeccapurple", alpha=1)  # Mean salary
+        ax1.axhline(y=self.ds, ls="--", c="grey", label=r"$\Delta s$")  # ds
         ax1.set(xlabel="Time", ylabel="Log Price", title="Mean salary and bankruptcy", xlim=xlim, yscale="log")
         ax1.grid()
         ax1.tick_params(axis='y', labelcolor="rebeccapurple")
@@ -266,12 +274,7 @@ class BankVisualization(general_functions.PlotMethods):
         salary_diff = (self.s - mean_salary) / mean_salary
         salary_spread = np.std(self.s, axis=0) / mean_salary
         
-        # Remove first 1000 values
         salary = self.s
-        # salary = self.s[:, 1000:]
-        # salary_diff = salary_diff[:, 1000:]
-        # mean_salary = mean_salary[1000:]
-        # salary_spread = salary_spread[1000:]
         
         # Create figure
         xlim = (0, salary.shape[1])
@@ -281,7 +284,7 @@ class BankVisualization(general_functions.PlotMethods):
         # ax0 - mean salary and bankruptcy fraction
         color_salary = "rebeccapurple"
         ax0.plot(mean_salary, c=color_salary)
-        ax0.axhline(self.rho, ls="--", c="grey", label=r"Mutation magnitude")
+        # ax0.axhline(self.ds, ls="--", c="grey", label=r"Mutation magnitude")
         ax0.set(title="Mean salary and bankruptcy", yscale="log", xlim=xlim)
         ax0.tick_params(axis='y', labelcolor=color_salary)
         ax0.set_ylabel(ylabel="Log Mean Salary", color=color_salary)
@@ -314,12 +317,201 @@ class BankVisualization(general_functions.PlotMethods):
                 ax0.axvline(x=peak, ls="--", c="grey", alpha=0.7)
                 ax1.axvline(x=peak, ls="--", c="grey", alpha=0.7)
         
-        # Legend
-        self._add_legend(ax0, y=0.9, ncols=1)
         # Add parameters text
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax0)
         # Save and show
         self._save_fig(fig, "salary_analysis")
+        if self.show_plots: plt.show()
+        
+    
+    def s_min(self):
+        # Load multiple files and get their salary values
+        mean_salary_list = []
+        salary_min_list = [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3]       
+        peak_list = []
+        period_mean = []
+        period_std = []
+        
+        for salary_min in salary_min_list:
+            with h5py.File(self.data_path, "r") as file:
+                # Create the right group name
+                parts = group_name.split("smin")
+                new_group_name = parts[0] + f"smin{salary_min}"
+                
+                data_group = file[new_group_name]
+                salary = data_group["s"][:]
+                mean_salary = np.mean(salary, axis=0)
+                mean_salary_list.append(mean_salary)
+                
+                # Find peak on mean salary
+                peak_idx, _ = find_peaks(mean_salary, height=0.8e-2, prominence=0.5e-2, distance=50)
+                peak_list.append(peak_idx[1:])  # First peak very likely to be in warmup
+                period = np.diff(peak_idx)
+                period_mean.append(np.mean(period))
+                period_std.append(np.std(period))
+        
+        
+        fig, (ax, ax1) = plt.subplots(nrows=2)
+        c = ["rebeccapurple", "firebrick", "black", "darkorange", "seagreen", "deepskyblue"]
+        def _plot_func(idx):
+            # Mean salary
+            ax.plot(mean_salary_list[idx], label=fr"$s_\text{{min}}=${salary_min_list[idx]}")
+            ax.plot(peak_list[idx], mean_salary_list[idx][peak_list[idx]], "x", color="grey")
+            ax.set(yscale="log", xlim=(0, self.time_steps))
+            ax.grid()
+        
+            ax1.errorbar(salary_min_list[idx], period_mean[idx], yerr=period_std[idx], fmt="o", c=c[idx], )
+        
+        ax1.set(xlabel=r"$s_\text{min}$", ylabel="Peak period", title="Period of peaks", xscale="log")
+        ax1.grid()
+        
+        for i in range(6):
+            _plot_func(i)
+            
+        fig.suptitle(r"Mean salary for different $s_\text{min}$ values")
+        
+        #Legend
+        self._add_legend(ax, x=0.5, y=0.75, ncols=3, fontsize=7)
+        # Add parameters text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
+        # Save and show
+        self._save_fig(fig, "s_min")
+        if self.show_plots: plt.show()
+
+
+    def period_as_function_of_ds_and_rf(self):
+        # Load data
+        period_mean_arr = np.ones((len(ds_space), len(rf_space))) * 1e-8
+        amplitude_mean_arr = np.ones((len(ds_space), len(rf_space))) * 1e-8
+        
+        for i, ds in enumerate(ds_space):
+            self.ds = ds
+            for j, rf in enumerate(rf_space):
+                self.rf = rf
+                with h5py.File(self.data_path, "r") as file:
+                    gname = self._get_group_name()
+                    data_group = file[gname]
+                    period = data_group["peak_period"][:]
+                    amplitude = data_group["peak_vals"][:]
+                    if period.size == 0:
+                        print(f"No peaks found for ds={ds}, rf={rf}")
+                        continue
+                    period_mean = np.mean(period)
+                    amplitude_mean = np.mean(amplitude)
+                    
+                    period_mean_arr[i, j] = period_mean
+                    amplitude_mean_arr[i, j] = amplitude_mean
+
+
+        # Convert NaN to 1
+        period_mean_arr = np.nan_to_num(period_mean_arr, nan=1e-8)
+        amplitude_mean_arr = np.nan_to_num(amplitude_mean_arr, nan=1e-8)
+        
+        # Create figure
+        fig, ax = plt.subplots(ncols=1, nrows=2)
+        
+        ax_period = ax[0]
+        ax_amplitude = ax[1]
+
+        # Contour plotted
+        # vmin_period = period_mean.min()+ 1e-10
+        vmin_period = 1
+        vmax_period = period_mean_arr.max()
+        vmin_amplitude = amplitude_mean_arr.min() + 1e-10
+        vmax_amplitude = amplitude_mean_arr.max()
+
+        # Cmap
+        # cmap_period = plt.cm.get_cmap("viridis")
+        cmap_period = plt.colormaps.get_cmap("hot")
+        cmap_amplitude = plt.colormaps.get_cmap("hot")
+        
+        # Contourf
+        # ax_period.contourf(ds_space, rf_space, period_mean_arr, cmap="magma", vmin=vmin_period, vmax=vmax_period)
+        # ax_amplitude.contourf(ds_space, rf_space, amplitude_mean_arr, cmap="hot", vmin=vmin_amplitude, vmax=vmax_amplitude)
+        
+        # Imshow        
+        ax_period.imshow(period_mean_arr, aspect="auto", cmap=cmap_period, vmin=vmin_period, vmax=vmax_period, extent=[ds_space.min(), ds_space.max(), rf_space.min(), rf_space.max()], origin="lower")
+        ax_amplitude.imshow(amplitude_mean_arr, aspect="auto", cmap=cmap_amplitude, vmin=vmin_amplitude, vmax=vmax_amplitude, extent=[ds_space.min(), ds_space.max(), rf_space.min(), rf_space.max()], origin="lower")
+        
+        # Add colorbars
+        sm_period = plt.cm.ScalarMappable(cmap=cmap_period, norm=LogNorm(vmin=vmin_period, vmax=vmax_period))
+        fig.colorbar(sm_period, ax=ax_period, orientation="vertical", label="Period", )
+        sm_amplitude = plt.cm.ScalarMappable(cmap=cmap_amplitude, norm=LogNorm(vmin=vmin_amplitude, vmax=vmax_amplitude))
+        fig.colorbar(sm_amplitude, ax=ax_amplitude, orientation="vertical", label="Amplitude", )            
+        
+        # Labels
+        ax_period.set(title="Period mean", ylabel=r"$\Delta s$", xlabel=r"$rf$")
+        ax_amplitude.set(title="Amplitude mean", ylabel=r"$\Delta s$", xlabel=r"$rf$")
+        
+        # Save and show
+        self._save_fig(fig, "period_ds_rf")
+        if self.show_plots: plt.show()
+
+
+    def time_scale(self):
+        """Investigate how different options for the time scale affect the period of the peaks.
+        Plot:
+            1. Mean salary over time with its peaks
+            2. Period of the peaks as a function of the time scale
+        """
+        # Load data
+        with h5py.File(self.data_path, "r") as file:
+            # Define group names
+            group_0 = self.group_name + "_time_scale_0"
+            group_x = self.group_name + "_time_scale_x"
+            group_inverse_r = self.group_name + "_time_scale_inverse_r"
+            
+            # Get data
+            data_group1 = file[group_0]
+            data_group2 = file[group_x]
+            data_group3 = file[group_inverse_r]
+            
+            # Get salary values
+            salary_0 = np.mean(data_group1["s"][:], axis=0)
+            salary_x = np.mean(data_group2["s"][:], axis=0)
+            salary_inverse_r = np.mean(data_group3["s"][:], axis=0)
+            
+            self.time_steps = salary_0.size
+        
+        # Calculate peaks for each time scale
+        def _get_peaks(salary):
+            peak_idx, _ = find_peaks(salary, height=0.8e-2, prominence=0.5e-2, distance=300, width=5)
+            peak_idx = peak_idx[1:]  # First peak very likely to be in warmup
+            period = np.diff(peak_idx)
+            period_mean = np.mean(period)
+            period_std = np.std(period)
+            return peak_idx, period_mean, period_std
+        
+        peak_idx_0, period_0, period_std_0 = _get_peaks(salary_0)
+        peak_idx_x, period_x, period_std_x = _get_peaks(salary_x)
+        peak_idx_inverse_r, period_inverse_r, period_std_inverse_r = _get_peaks(salary_inverse_r)
+        
+        # Create figure
+        fig, (ax_s, ax_T) = plt.subplots(nrows=2)
+        
+        # ax_s - Salary
+        ax_s.plot(salary_0, label="Time scale 0")
+        ax_s.plot(salary_x, label="Time scale x")
+        ax_s.plot(salary_inverse_r, label="Time scale 1/r")        
+        ax_s.plot(peak_idx_0, salary_0[peak_idx_0], "x", c="grey")
+        ax_s.plot(peak_idx_x, salary_x[peak_idx_x], "x", c="grey")
+        ax_s.plot(peak_idx_inverse_r, salary_inverse_r[peak_idx_inverse_r], "x", c="grey")
+
+        ax_s.set(yscale="log", xlim=(0, self.time_steps), xlabel="Time", ylabel="Mean Salary")
+        ax_s.grid()
+        self._add_legend(ax_s, ncols=3)
+        
+        # ax_T - Period
+        for i in range(3):
+            ax_T.errorbar([0, 1, 2][i], [period_0, period_x, period_inverse_r][i], yerr=[period_std_0, period_std_x, period_std_inverse_r][i], fmt="o")
+        ax_T.set(ylabel="Period", title="Period of peaks")
+        ax_T.grid()
+        ax_T.set_xticks([0, 1, 2], labels=["T=0", "T=50", "T=1/r"])
+        
+        # Add parameters
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax_s)
+        # Save and show
+        self._save_fig(fig, "time_scale")
         if self.show_plots: plt.show()
         
 
@@ -336,8 +528,8 @@ class BankVisualization(general_functions.PlotMethods):
             return new_group_name
         
         with h5py.File(self.data_path, "r") as file:
-            self.parameter_space = self.salary_increase_space
-            for rho in self.salary_increase_space:
+            self.parameter_space = ds_space
+            for rho in ds_space:
                 # Find "rho" in group_name, replace the value with the current rho
                 group_name_new = _replace_salary_increase(self.group_name, rho)
                 data_group = file[group_name_new]
@@ -420,7 +612,7 @@ class BankVisualization(general_functions.PlotMethods):
         
         first_crash_time = np.zeros(len(self.peak_idx_list))
         
-        for i in range(len(self.salary_increase_space)):
+        for i in range(len(ds_space)):
             # Check for the case of no peaks
             if np.size(self.peak_idx_list) == 0:
                 first_crash_time[i] = self.time_steps
@@ -499,8 +691,12 @@ if __name__ == "__main__":
         # bank_vis.plot_interest_rates()
         # bank_vis.plot_system_money_mean_salary()
         # bank_vis.plot_production_capacity()
-        bank_vis.salary_analysis()
+        # bank_vis.salary_analysis()
         # bank_vis.plot_debt()
+        
+        # bank_vis.s_min()
+        bank_vis.period_as_function_of_ds_and_rf()
+        # bank_vis.time_scale()
         
     # -- Peak analysis -- 
     plot_peak = False
