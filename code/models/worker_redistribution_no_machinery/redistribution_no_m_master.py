@@ -5,7 +5,7 @@ import h5py
 
 
 class Workforce():
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, time_steps, ds_space, rf_space, seed=None):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, time_steps, ds_space, rf_space, time_scale_func=None, mutation_magnitude=0.01, seed=None):
         # Set variables
         self.N = number_of_companies
         self.W = number_of_workers 
@@ -14,12 +14,16 @@ class Workforce():
         self.time_steps = time_steps
         self.ds_space = ds_space  # Used in case the store_peak_rho_space method is not called
         self.rf_space = rf_space
+        self.mutation_magnitude = mutation_magnitude
         self.seed = seed
         
         # Time scale function
-        self._func_time_scale = self._time_scale_0  # Default time scale function
-        # self._func_time_scale = self._time_scale_x
-        # self._func_time_scale = self._time_scale_inverse_r 
+        if time_scale_func == None or time_scale_func == "0":
+            self._func_time_scale = self._time_scale_0  # Default time scale function
+        elif time_scale_func == "x":
+            self._func_time_scale = self._time_scale_x            
+        elif time_scale_func == "inverse_r":
+            self._func_time_scale = self._time_scale_inverse_r 
         
         # Local paths for saving files
         file_path = Path(__file__)
@@ -40,7 +44,7 @@ class Workforce():
 
     def _get_group_name(self) -> str:
         func_name = self._func_time_scale.__name__.replace("_", "")
-        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.salary_increase:.3f}_rf{self.interest_rate_free:.3f}_{func_name}"
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.salary_increase:.3f}_rf{self.interest_rate_free:.3f}_mutation{self.mutation_magnitude}_{func_name}"
 
 
     def _initialize_market_variables(self) -> None:    
@@ -71,7 +75,7 @@ class Workforce():
         
         # System
         self.interest_rate_hist = np.zeros(self.time_steps, dtype=float)
-        self.went_bankrupt_hist = np.zeros(self.time_steps, dtype=int)
+        self.went_bankrupt_hist = np.ones(self.time_steps, dtype=int)
         self.system_money_spent_hist = np.zeros(self.time_steps, dtype=float)
         
         # Initial values
@@ -172,7 +176,7 @@ class Workforce():
         if idx_surving_companies.size != 0:  # There are non-bankrupt companies            
             new_salary_idx = np.random.choice(idx_surving_companies, size=number_of_companies_gone_bankrupt, replace=True)
             # self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-self.salary_increase, self.salary_increase, size=number_of_companies_gone_bankrupt)
-            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-0.01, 0.01, size=number_of_companies_gone_bankrupt)
+            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-mutation_magnitude, mutation_magnitude, size=number_of_companies_gone_bankrupt)
         else:
             self.salary = np.random.uniform(self.salary_increase, 1, number_of_companies_gone_bankrupt)
         
@@ -271,10 +275,12 @@ class Workforce():
             
             # Attributes
             group.attrs["W"] = self.W
+            group.attrs["N"] = self.N
             group.attrs["salary_increase"] = self.salary_increase
             group.attrs["interest_rate_free"] = self.interest_rate_free
             group.attrs["rf_space"] = self.rf_space
             group.attrs["ds_space"] = self.ds_space
+            group.attrs["mutation_magnitude"] = self.mutation_magnitude
 
 
     def store_data_over_parameter_space(self):
@@ -321,21 +327,31 @@ class Workforce():
             self._func_time_scale = func_time_scale
             self.group_name =  self._get_group_name() + f"{func_time_scale.__name__}"
             self.store_data()
+            
+            
+    def store_mutation_size(self):
+        mutation_magnitude_list = [1e-2, 1e-1, 1, 10]
+        np.random.seed(self.seed)
+        for mutation_magnitude in mutation_magnitude_list:
+            self.mutation_magnitude = mutation_magnitude
+            self.group_name = self._get_group_name()
+            self.store_data()
         
             
 # Define variables for other files to use
 number_of_companies = 250
 number_of_workers = 5000
-time_steps = 20_000
+time_steps = 25_000
 interest_rate_free = 0.05
-salary_increase = 0.05
-ds_space = np.linspace(0.01, 0.06, 15)  # Good range: 0.008 < ds < 0.08 
-rf_space = np.linspace(0.01, 0.1, len(ds_space))  # Good range: 0.01 < rf < ?
-
-seed = None
+salary_increase = 0.075
+ds_space = [0.01, 0.03, 0.1]  # Good range: 0.008 < ds < 0.08 
+rf_space = [0.01, 0.03, 0.1, 0.15]  # Good range: 0.01 < rf < ?
+mutation_magnitude = 1e-1
+time_scale_func = "inverse_r"
+seed = 42
 
 # Other files need some variables
-workforce = Workforce(number_of_companies, number_of_workers, salary_increase, interest_rate_free, time_steps, ds_space, rf_space, seed)
+workforce = Workforce(number_of_companies, number_of_workers, salary_increase, interest_rate_free, time_steps, ds_space, rf_space, time_scale_func, mutation_magnitude, seed)
 
 dir_path_output = workforce.dir_path_output
 dir_path_image = workforce.dir_path_image
@@ -344,8 +360,12 @@ group_name = workforce.group_name
 if __name__ == "__main__":
     # workforce.store_data()
     
-    # workforce.store_data_over_parameter_space()
-    # workforce.store_data_s_min()
-    workforce.store_data_rf_and_ds()
+    workforce.store_mutation_size()
+    
+    # workforce.store_data_rf_and_ds()
+    
     # workforce.store_data_time_scale()
+    # workforce.store_data_s_min()
+    # workforce.store_data_over_parameter_space()  # ds
+
     print("Stored Values")
