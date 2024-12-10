@@ -160,6 +160,7 @@ class Workforce():
     def _bankruptcy(self):
         """Companies who pays more in debt than they earn in sellings goes bankrupt.
         """
+        
         # Find companies that go bankrupt
         bankrupt_idx = self.w * self.system_money_spent / self.W < self.interest_rate * self.d
         number_of_companies_gone_bankrupt = bankrupt_idx.sum()  # True = 1, False = 0, so sum gives amount of bankrupt companies
@@ -175,8 +176,14 @@ class Workforce():
         idx_surving_companies = np.arange(self.N)[~bankrupt_idx]
         if idx_surving_companies.size != 0:  # There are non-bankrupt companies            
             new_salary_idx = np.random.choice(idx_surving_companies, size=number_of_companies_gone_bankrupt, replace=True)
-            # self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-self.salary_increase, self.salary_increase, size=number_of_companies_gone_bankrupt)
-            self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-mutation_magnitude, mutation_magnitude, size=number_of_companies_gone_bankrupt)
+            if self.mutation_magnitude == -1:            
+                self.salary[bankrupt_idx] = 0.8 * np.mean(self.salary[~bankrupt_idx])
+            elif self.mutation_magnitude == -2:
+                self.salary[bankrupt_idx] = self.system_money_spent / self.W
+            elif self.mutation_magnitude == -3:
+                self.salary[bankrupt_idx] = np.random.uniform(self.salary_min, np.max(self.salary[~bankrupt_idx]), size=number_of_companies_gone_bankrupt)
+            else:
+                self.salary[bankrupt_idx] = self.salary[new_salary_idx] * 1 + np.random.uniform(-self.mutation_magnitude, self.mutation_magnitude, size=number_of_companies_gone_bankrupt)
         else:
             self.salary = np.random.uniform(self.salary_increase, 1, number_of_companies_gone_bankrupt)
         
@@ -330,10 +337,10 @@ class Workforce():
             
             
     def store_mutation_size(self):
-        mutation_magnitude_list = [1e-2, 1e-1, 1, 10]
+        mutation_magnitude_list = [1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, -1, -2, -3]
         np.random.seed(self.seed)
-        for mutation_magnitude in mutation_magnitude_list:
-            self.mutation_magnitude = mutation_magnitude
+        for mutation in mutation_magnitude_list:
+            self.mutation_magnitude = mutation * 1
             self.group_name = self._get_group_name()
             self.store_data()
         
@@ -341,14 +348,14 @@ class Workforce():
 # Define variables for other files to use
 number_of_companies = 250
 number_of_workers = 5000
-time_steps = 25_000
+time_steps = 30_000
 interest_rate_free = 0.05
 salary_increase = 0.075
 ds_space = [0.01, 0.03, 0.1]  # Good range: 0.008 < ds < 0.08 
 rf_space = [0.01, 0.03, 0.1, 0.15]  # Good range: 0.01 < rf < ?
-mutation_magnitude = 1e-1
+mutation_magnitude = -3
 time_scale_func = "inverse_r"
-seed = 42
+seed = 100
 
 # Other files need some variables
 workforce = Workforce(number_of_companies, number_of_workers, salary_increase, interest_rate_free, time_steps, ds_space, rf_space, time_scale_func, mutation_magnitude, seed)
