@@ -30,7 +30,7 @@ class WorkForce():
         # Company variables
         self.w = np.ones(self.N, dtype=np.int32)
         self.d = np.zeros(self.N, dtype=np.float32)
-        self.salary = np.random.uniform(self.salary_min, 0.5, self.N)
+        self.salary = np.random.uniform(self.salary_min+self.mutation_magnitude, 5*self.mutation_magnitude, self.N)
         
         # Initial values
         if type(self.rf) == str:
@@ -49,7 +49,7 @@ class WorkForce():
     def _initialize_history_arrays(self):
         # Company
         self.w_hist = np.zeros((self.N, self.time_steps), dtype=np.int32)
-        self.d_hist = np.zeros((self.N, self.time_steps), dtype=np.float32)
+        self.d_hist = np.ones((self.N, self.time_steps), dtype=np.float32) * (-1e-8)
         self.s_hist = np.ones((self.N, self.time_steps), dtype=np.float32)
         # System
         self.r_hist = np.zeros(self.time_steps, dtype=np.float32)
@@ -87,7 +87,7 @@ class WorkForce():
 
     def _simulation(self):
         # Initialize variables and history arrays
-        # self._initialize_market_variables()
+        # self._initialize_market_variables()  # Moved to __init__
         self._initialize_history_arrays()
         
         # Run simulation
