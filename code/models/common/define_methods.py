@@ -106,8 +106,7 @@ class MethodsWorkForce(WorkForce):
         """
         additive_noise = 0 #np.random.uniform(-0.05, 0.05, size=self.N)
         noise_factor = np.random.uniform(0, 1, size=self.N)
-        ds = (self.d - self.d_hist[:, self.current_time-1]) / (self.d_hist[:, self.current_time-1] - 1e-8)
-        ds_noise = np.tanh(ds * noise_factor)
+        ds_noise = self.ds * noise_factor
         negative_correction = 1 / (1 + np.abs(ds_noise))
         # Values after update
         ds_pos = self.salary * (1 + ds_noise)
@@ -188,6 +187,12 @@ class MethodsWorkForce(WorkForce):
         
         if self.worker_update_method == "unlimited":
             self.W = self.w.sum()
+    
+        if bankrupt_idx[0] == True:
+            self.first_company_went_bankrupt = 1
+        else:
+            self.first_company_went_bankrupt = 0
+
     
     
     def _bankruptcy_negative_money(self):    
