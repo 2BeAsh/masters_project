@@ -3,7 +3,7 @@ from master import WorkForce
 
 
 class MethodsWorkForce(WorkForce):
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, worker_update_method, time_steps, seed):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, update_methods: dict, time_steps, seed):
         """Must define the following methods for master to work:
             _transaction()
             _pay_interest()
@@ -13,8 +13,11 @@ class MethodsWorkForce(WorkForce):
             _adjust_interest_rate()
             _time_scale()
         """
+        self.worker_update_method = update_methods["worker_update"]
+        self.bankruptcy_method = update_methods["bankruptcy"]
+        self.mutation_method = update_methods["mutation"]
+        
         super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, time_steps, seed)
-        self.worker_update_method = worker_update_method
         
         # Initial values and choice of methods
         self._pick_functions()
@@ -26,7 +29,46 @@ class MethodsWorkForce(WorkForce):
         self._pick_bankrupt_salary_func()      
         self._pick_worker_update_func()  
         self._pick_interest_update_func()
-        self._pick_salary_update_func()
+        self._pick_bankruptcy_func()
+
+
+    def _pick_worker_update_func(self):
+        if self.worker_update_method == "unlimited":
+            self.W = self.w.sum()
+            self._update_workers = self._update_workers_unlimited
+        elif self.worker_update_method == "limited":
+            self._update_workers = self._update_workers_limited
+    
+    
+    def _pick_bankrupt_salary_func(self):
+        if self.mutation_method == "lastT":
+            self.func_bankrupt_salary = self._bankrupt_salary_lastT
+        elif self.mutation_method== "spread":
+            self.func_bankrupt_salary = self._bankrupt_salary_spread
+        elif self.mutation_method == "constant":
+            self.func_bankrupt_salary = self._bankrupt_salary_mutate
+        else:
+            print("Mutation magnitude must be `constant`, 'spread' or 'lastT'")
+    
+    
+    def _pick_interest_update_func(self):
+        # Variable
+        if self.rf_name == "variable":
+            self._adjust_interest_rate = self._update_rf            
+        # float
+        elif type(self.rf_name) == float:
+            self._adjust_interest_rate = self._adjust_rf_for_PD
+        else:
+            print("Interest rate must be a float or 'variable'")
+
+
+    def _pick_bankruptcy_func(self):
+        if self.bankruptcy_method == "cannot_pay_salary":
+            self._bankruptcy = self._bankruptcy_cannot_pay_salary
+        elif self.bankruptcy_method == "negative_money":
+            self._bankruptcy = self._bankruptcy_negative_money
+        else:
+            print("Bankruptcy method must be 'cannot_pay_salary' or 'negative_money'")
 
 
     def _transaction(self):
@@ -44,14 +86,6 @@ class MethodsWorkForce(WorkForce):
         self.d[idx_unique] += salary_unique_all - sell_unique_all
         self.system_money_spent += salary_unique_all.sum()
         
-    
-    def _transaction_deterministic(self):
-        """All companies get to sell/pay salary once"""    
-        sell = self.w * self.mu / self.W
-        salary = self.salary * self.w
-        self.d += salary - sell
-        self.system_money_spent += salary.sum()
-    
 
     def _pay_interest(self):   
         """Companies with positive debt pay interest rates
@@ -61,7 +95,7 @@ class MethodsWorkForce(WorkForce):
         self.d[positive_debt_idx] += money_spent_on_interest
         
     
-    def _update_salary_standard(self):
+    def _update_salary(self):
         """All companies update their salaries depending on whether they made a profit or not. 
         """
         noise_factor = np.random.uniform(0, 1, size=self.N)
@@ -96,14 +130,14 @@ class MethodsWorkForce(WorkForce):
         self.salary += q
         self.salary = np.maximum(self.salary, self.salary_min)
         
-    
+        
     def _update_workers_limited(self):
         """All workers are "fired", then rehired by the companies proportionally to the companies' salary. 
         """
         # "Fire" workers
         self.w[:] = 0
         # All workers choose a company to work for proportionally to the salary
-        prob_choose = self.salary / self.salary.sum()  
+        prob_choose = self.salary ** self.prob_exponent / (self.salary ** self.prob_exponent).sum()  
         idx_worker_choose = np.random.choice(np.arange(self.N), size=self.W, replace=True, p=prob_choose)
         idx_company_workers_went_to, number_of_workers_went_to_company = np.unique(idx_worker_choose, return_counts=True)
         # Update number of workers
@@ -132,7 +166,7 @@ class MethodsWorkForce(WorkForce):
         self.W = self.w.sum()
     
         
-    def _bankruptcy(self):
+    def _bankruptcy_cannot_pay_salary(self):
         """Companies who pays more in debt than they earn from selling go bankrupt. 
         """
         # Find who goes bankrupt
@@ -146,7 +180,24 @@ class MethodsWorkForce(WorkForce):
         
         if self.worker_update_method == "unlimited":
             self.W = self.w.sum()
+    
+    
+    def _bankruptcy_negative_money(self):    
+        """A company goes bankrupt if it any debt i.e. no money
+        """
+        bankrupt_idx = self.d > 0
+        self.went_bankrupt = bankrupt_idx.sum()
+        # Reset values / create new companies
+        self.w[bankrupt_idx] = 0
+        self.d[bankrupt_idx] = -1e-8
+        self.func_bankrupt_salary(bankrupt_idx)
+        self.salary = np.maximum(self.salary, self.salary_min)
         
+        if bankrupt_idx[0] == True:
+            self.first_company_went_bankrupt = 1
+        else:
+            self.first_company_went_bankrupt = 0
+    
     
     def _bankrupt_salary_mutate(self, bankrupt_idx):
         """Bankrupt companies pick a non-bankrupt company and mutate their salary.
@@ -154,7 +205,11 @@ class MethodsWorkForce(WorkForce):
         Args:
             bankrupt_idx (np.ndarray): List of companies who went bankrupt
         """
-        idx_surviving_companies = np.arange(self.N)[~bankrupt_idx]
+        # Sample indices from non-bankrupt companies with a positive number of workers
+        idx_not_bankrupt = ~bankrupt_idx
+        idx_positive_workers = self.w > 0
+        idx_not_bankrupt_with_positive_workers = idx_not_bankrupt & idx_positive_workers
+        idx_surviving_companies = np.arange(self.N)[idx_not_bankrupt_with_positive_workers]
         self.mutations_arr = np.random.uniform(-self.mutation_magnitude, self.mutation_magnitude, size=self.went_bankrupt)
         if len(idx_surviving_companies) != 0:
             new_salary_idx = np.random.choice(idx_surviving_companies, replace=True, size=self.went_bankrupt)
@@ -196,44 +251,6 @@ class MethodsWorkForce(WorkForce):
         else:
             self.salary = np.random.uniform(self.salary_min, np.max(self.salary), self.N)
             self.mutations_arr = 0
-    
-    
-    def _pick_worker_update_func(self):
-        if self.worker_update_method == "unlimited":
-            self.W = self.w.sum()
-            self._update_workers = self._update_workers_unlimited
-        elif self.worker_update_method == "limited":
-            self._update_workers = self._update_workers_limited
-    
-    
-    def _pick_bankrupt_salary_func(self):
-        if self.mutation_magnitude == "lastT":
-            self.func_bankrupt_salary = self._bankrupt_salary_lastT
-        elif self.mutation_magnitude == "spread":
-            self.func_bankrupt_salary = self._bankrupt_salary_spread
-        elif type(self.mutation_magnitude) == float:
-            self.func_bankrupt_salary = self._bankrupt_salary_mutate
-        else:
-            print("Mutation magnitude must be a float, 'spread' or 'lastT'")
-    
-    
-    def _pick_interest_update_func(self):
-        # Variable
-        if self.rf_name == "variable":
-            self._adjust_interest_rate = self._update_rf            
-        # float
-        elif type(self.rf_name) == float:
-            self._adjust_interest_rate = self._adjust_rf_for_PD
-        else:
-            print("Interest rate must be a float or 'variable'")
-            
-    def _pick_salary_update_func(self):
-        if self.mutation_magnitude == 0:
-            print("m = 0, mutation happens in salary update")
-            self._update_salary = self._update_salary_mutate
-        else:
-            self._update_salary = self._update_salary_standard
-            
 
 
     def _update_rf(self):
@@ -260,16 +277,17 @@ class MethodsWorkForce(WorkForce):
         
 
     def _time_scale(self):
+        return 1
         return np.int32(1 / self.r)
-
-
-    def _percent_change_size(self):
-        return np.mean(self.salary) / np.std(self.salary)
 
 
     def _store_values_in_history_arrays(self):
         self.T = self._time_scale()
         super()._store_values_in_history_arrays()
+
+    
+                        
+
         
         
         
