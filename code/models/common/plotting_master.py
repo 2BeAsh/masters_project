@@ -17,30 +17,48 @@ class PlotMaster(general_functions.PlotMethods):
         self.dir_path_image = dir_path_image
         self.loaded_groups = {}
         
-        self.skip_values = 5000
+        self.skip_values = 2500
         
+        # Colours
+        self._set_colours()
+    
+    
+    def _set_colours(self):
+        """Set colours to salary, debt, interest rate etc
+        """
+        self.colours = {
+            "salary": general_functions.list_of_colors[0],
+            "debt": general_functions.list_of_colors[1],
+            "interest_rate": general_functions.list_of_colors[2],
+            "workers": general_functions.list_of_colors[3],
+            "mutations": general_functions.list_of_colors[4],
+            "bankruptcy": "red",
+        }
+    
         
     def _load_data_group(self, gname):
         with h5py.File(file_path, "r") as f:
             group = f[gname]
             data = {
-                "w": group["w"][:],
-                "d": group["d"][:],
-                "s": group["s"][:],
-                "r": group["r"][:],
-                "went_bankrupt": group["went_bankrupt"][:],
-                "mu": group["mu"][:],
-                "mutations": group["mutations"][:],
-                "N": group.attrs["N"],
-                "W": group.attrs["W"],
-                "ds": group.attrs["ds"],
-                "rf": group.attrs["rf"],
-                "m": group.attrs["m"],
+                "w": np.array(group.get("w", None)),
+                "d": np.array(group.get("d", None)),
+                "s": np.array(group.get("s", None)),
+                "r": np.array(group.get("r", None)),
+                "went_bankrupt": np.array(group.get("went_bankrupt", None)),
+                "first_company_went_bankrupt": np.array(group.get("first_company_went_bankrupt", None)),
+                "mu": np.array(group.get("mu", None)),
+                "mutations": np.array(group.get("mutations", None)),
+                "peak_idx": np.array(group.get("peak_idx", None)),
+                "repeated_m_runs": np.array(group.get("repeated_m_runs", None)),
+                "N": np.array(group.attrs.get("N", None)),
+                "time_steps": group.attrs.get("time_steps", None),
+                "W": np.array(group.attrs.get("W", None)),
+                "ds": np.array(group.attrs.get("ds", None)),
+                "rf": np.array(group.attrs.get("rf", None)),
+                "m": np.array(group.attrs.get("m", None)),
+                "prob_expo": np.array(group.attrs.get("prob_expo", None)),
+                "m_repeated": np.array(group.attrs.get("m_repeated", None)),
             }
-            try:
-                data["peak_idx"] = group["peak_idx"][:]
-            except KeyError:
-                data["peak_idx"] = None
             self.loaded_groups[gname] = data
     
     
@@ -55,20 +73,26 @@ class PlotMaster(general_functions.PlotMethods):
         self.s = data["s"]
         self.r = data["r"]
         self.went_bankrupt = data["went_bankrupt"]
+        self.first_company_went_bankrupt = data["first_company_went_bankrupt"]
         self.mu = data["mu"]
         self.mutations = data["mutations"]
         self.N = data["N"]
+        self.time_steps = data["time_steps"]
         self.W = data["W"]
         self.ds = data["ds"]
         self.rf = data["rf"]
         self.m = data["m"]
+        self.prob_expo = data["prob_expo"]
         self.peak_idx = data["peak_idx"]
-        self.time_steps = self.s.shape[1]
-        self.xlim = (self.skip_values, self.time_steps)
+        self.salary_repeated_m_runs = data["repeated_m_runs"]
+        self.m_repeated = data["m_repeated"]
         
-        if self.time_steps <= self.skip_values:
-            self.skip_values = 0
-            print(f"Skip values {self.skip_values} is larger than the time steps {self.time_steps}. Set skip values to 0.")
+        if (self.s != None).all():
+            self.xlim = (self.skip_values, self.time_steps)
+            
+            if self.time_steps <= self.skip_values:
+                self.skip_values = 0
+                print(f"Skip values {self.skip_values} is larger than the time steps {self.time_steps}. Set skip values to 0.")
     
     
     def plot_salary(self):
@@ -84,11 +108,10 @@ class PlotMaster(general_functions.PlotMethods):
         fig, (ax0, ax1) = plt.subplots(nrows=2, figsize=(10, 10))
         
         # ax0 - Salary and fraction who went bankrupt
-        c0 = general_functions.list_of_colors[0]
-        c1 = general_functions.list_of_colors[1]
-        
+        c0 = self.colours["salary"]
+        c1 = self.colours["bankruptcy"]
         ax0.plot(time_values, mean_salary, label="Mean salary", c=c0, alpha=1)
-        ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=1, ls="dotted")
+        ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.5, ls="dotted")
         
         ax0.set(xlim=self.xlim, ylabel="Log Price", yscale="log", title="Mean salary and bankruptcies")
         ax0.set_ylabel("Log Price", color=c0)
@@ -107,7 +130,7 @@ class PlotMaster(general_functions.PlotMethods):
         ax1.grid()
         
         # Plot the peaks as vertical lines on ax0 and ax1
-        if self.peak_idx is not None:
+        if np.any(self.peak_idx != None):
             for peak in self.peak_idx:
                 ax0.axvline(x=peak, ls="--", c="grey", alpha=0.7)
                 ax1.axvline(x=peak, ls="--", c="grey", alpha=0.7)
@@ -125,12 +148,10 @@ class PlotMaster(general_functions.PlotMethods):
         d = self.d[:N_plot, self.skip_values:]
         w = self.w[:N_plot, self.skip_values:]
         time_values = np.arange(self.skip_values, self.time_steps)
-        
+                
         # Create figure
         fig, (ax_s, ax_d, ax_w) = plt.subplots(nrows=3)
         
-        # c0 = general_functions.list_of_colors[0]
-        # c1 = general_functions.list_of_colors[1]
         # ax_s - salary
         ax_s.plot(time_values, s.T)
         ax_s.set(title=f"Salary and debt of first {N_plot} companies", yscale="log")
@@ -145,10 +166,16 @@ class PlotMaster(general_functions.PlotMethods):
         ax_d.set_ylabel("Debt")
         # ax_d.tick_params(axis='y', labelcolor=c1)
         ax_d.grid()
-        
+
+        # Plot bankruptcies for the first company on the debt subplot
+        time_bankrupt = time_values[self.first_company_went_bankrupt[self.skip_values:] == 1]
+        y_bankrupt = np.zeros(len(time_bankrupt))
+        ax_d.scatter(time_bankrupt, y_bankrupt, c="black", marker="x", s=7)
+
         # ax_w - workers
         ax_w.plot(time_values, w.T)
-        ax_w.set(xlabel="Time", ylabel="Workers", title="Workers")
+        ax_w.set(xlabel="Time", ylabel="Log Count", title="Workers", yscale="log")
+        ax_w.grid()
         
         self._text_save_show(fig, ax_s, "single_companies", xtext=0.05, ytext=0.85)
         
@@ -167,8 +194,8 @@ class PlotMaster(general_functions.PlotMethods):
         
         # Create figure
         fig, (ax, ax1, ax2) = plt.subplots(nrows=3)
-        c0 = general_functions.list_of_colors[0]
-        c1 = general_functions.list_of_colors[1]
+        c0 = self.colours["debt"]
+        c1 = self.colours["bankruptcy"]
         
         ax.plot(time_values, mean_debt, c=c0, label="Mean debt")
         # ax.plot(time_values, median_debt, c=c0, ls="--", label="Median debt")
@@ -184,7 +211,7 @@ class PlotMaster(general_functions.PlotMethods):
         ax_twin.tick_params(axis='y', labelcolor=c1)
         
         # ax1 - Salary and debt
-        c2 = general_functions.list_of_colors[2]
+        c2 = self.colours["salary"]
         ax1.plot(time_values, mean_debt, c=c0)
         ax1.set(xlabel="Time", title="Mean salary and debt", yscale="symlog")
         ax1.set_ylabel("Mean Debt", color=c0)
@@ -199,7 +226,7 @@ class PlotMaster(general_functions.PlotMethods):
         
         # ax2 - Debt distribution
         Nbins = int(np.sqrt(self.N))
-        ax2.hist(d_final, bins=Nbins)
+        ax2.hist(d_final, bins=Nbins, color=c0)
         ax2.set(title="Debt distribution at final time step", xlabel="Debt", ylabel="Counts", yscale="log")
         ax2.grid()
         
@@ -228,8 +255,8 @@ class PlotMaster(general_functions.PlotMethods):
         ax_w = ax[1, 1]
         
         # ax_s - Salary and bankrupt
-        c0 = general_functions.list_of_colors[0]
-        c1 = general_functions.list_of_colors[1]
+        c0 = self.colours["salary"]
+        c1 = self.colours["bankruptcy"]
         ax_s_twin = ax_s.twinx()
         ax_s_twin.plot(time_values, w_bankrupt / self.N, c=c1, alpha=0.7)
         ax_s_twin.set_ylabel("Fraction bankrupt", color=c1)
@@ -242,19 +269,19 @@ class PlotMaster(general_functions.PlotMethods):
         ax_s.grid()
 
         # ax_d - Debt
-        c2 = general_functions.list_of_colors[2]
+        c2 = self.colours["debt"]
         ax_d.plot(time_values, d_mean, c=c2)
         ax_d.set(title="Log Mean debt", xlabel="Time", yscale="symlog")
         ax_d.grid()
 
         # ax_r - Interest rate
-        c3 = general_functions.list_of_colors[3]
+        c3 = self.colours["interest_rate"]
         ax_r.plot(time_values, r, c=c3)
         ax_r.set(title="Interest rate", xlabel="Time")
         ax_r.grid()
         
         # ax_w - Workers
-        c4 = general_functions.list_of_colors[4]
+        c4 = self.colours["workers"]
         ax_w.plot(time_values, w_mean, c=c4)
         ax_w.set(title="Workers", xlabel="Time")
         ax_w.grid()
@@ -263,20 +290,171 @@ class PlotMaster(general_functions.PlotMethods):
         
     
     def plot_mutations(self):
-        """Compare mean salary to the sum of mutations
+        """Compare mean and median salary to the sum of mutations to see if salary is just the noise from mutations.
         """
         # Preprocess
+        # Only plot positive mutation contributions
         self._get_data(self.group_name)
-        s_mean = self.s.mean(axis=0)
+        mutation_pos_idx = self.mutations > 0
+        mutation_mean_pos = self.mutations[mutation_pos_idx] / self.N
+        x_pos = np.arange(self.time_steps)[mutation_pos_idx]   
         
-        fig, ax = plt.subplots()
-        c0 = general_functions.list_of_colors[0]
-        c1 = general_functions.list_of_colors[1]
-        ax.plot(self.mutations, label="Sum of mutations", ls="--", alpha=0.6, c=c1)
-        ax.plot(s_mean, label="Mean salary", alpha=0.95, c=c0)
-        ax.set(title="Mean salary and sum of mutations", xlabel="Time", ylabel="Value", yscale="symlog")
+        s_mean = self.s.mean(axis=0)
+        s_median = np.median(self.s, axis=0)
+        
+        # Create figure
+        fig, (ax, ax_med) = plt.subplots(nrows=2)
+        c0 = self.colours["salary"]
+        c1 = self.colours["mutations"]
+        ax.plot(s_mean, label="Salary", alpha=0.9, c=c0)
+        ax.plot(x_pos, mutation_mean_pos, ".", label="Mean of mutations", alpha=0.5, c=c1)
+        ax.set(title="Mean salary", ylabel="Log Price", yscale="log")
         ax.grid()
         
-        self._add_legend(ax, ncols=2)
+        # ax_med - Median salary
+        ax_med.plot(s_median, label="Median salary", alpha=0.9, c=self.colours["salary"], ls="-")
+        ax_med.plot(x_pos, mutation_mean_pos, ".", label="Mean of mutations", alpha=0.5, c=c1)
+        ax_med.set(title="Median salary", xlabel="Time", ylabel="Log Price", yscale="log")
+        ax_med.grid()
+
+        self._add_legend(ax, ncols=3)
+        self._text_save_show(fig, ax, "mutations", xtext=0.05, ytext=0.8)
+    
         
-        self._text_save_show(fig, ax, "mutations", xtext=0.05, ytext=0.85)
+    def plot_multiple_mutation_size(self, group_name_list):
+        """Plot the mean salary on one subplot, and the min and max on another subplot for different mutation sizes
+        """       
+        # Load data
+        self._get_data(self.group_name)
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        mutation_size_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            m = self.m
+            mean_salary_list[i] = mean_salary
+            mutation_size_list[i] = m
+            
+        # Get min and max salary, divide by mutation size
+        min_salary = np.min(mean_salary_list, axis=1) / mutation_size_list
+        max_salary = np.max(mean_salary_list, axis=1) / mutation_size_list
+        
+        # Create figure
+        fig, (ax, ax1) = plt.subplots(nrows=2)
+        c_list = general_functions.list_of_colors[:len(group_name_list)]
+        for i, (mean_salary, m) in enumerate(zip(mean_salary_list, mutation_size_list)):
+            ax.plot(time_vals, mean_salary, label=f"m={m}", c=c_list[i], alpha=0.7)
+            ax1.plot(mutation_size_list, min_salary, "v", c=c_list[i])
+            ax1.plot(mutation_size_list, max_salary, "^", c=c_list[i])
+        
+        # Setup
+        ax.set(xlabel="Time", ylabel="Log Price", title="Mean salary for different mutation sizes", yscale="log")
+        ax1.set(xlabel="Mutation size", ylabel="Log Price", title="Min and max of mean salary divided by m", yscale="log", xscale="log")
+        ax.grid()
+        ax1.grid()
+        
+        self._add_legend(ax, ncols=len(group_name_list)//2, fontsize=5)
+        self._text_save_show(fig, ax, "multiple_mutation_size", xtext=0.05, ytext=0.75)
+    
+    
+    def plot_repeated_mutation_size(self):
+        """Plot the mean of repeated measurements of the minimum and maximum of the mean salary, together with their uncertanties.
+        """
+        # Calculate mean and std of min and max salary for each m
+        self._get_data(self.group_name)
+        if np.any(self.m_repeated == None):
+            raise ValueError("No repeated m runs data found.")
+        N_repeats = np.shape(self.salary_repeated_m_runs)[1]
+        time_steps = np.shape(self.salary_repeated_m_runs)[2]
+        
+        min_arr = np.min(self.salary_repeated_m_runs, axis=2)
+        mean_min_arr = np.mean(min_arr, axis=1) / self.m_repeated  # Normalize the minimum salary by the mutation magnitude
+        std_mean_min_arr = np.std(min_arr, axis=1, ddof=1) / np.sqrt(N_repeats) / self.m_repeated
+        
+        max_arr = np.max(self.salary_repeated_m_runs, axis=2) 
+        mean_max_arr = np.mean(max_arr, axis=1) / self.m_repeated
+        std_mean_max_arr = np.std(max_arr, axis=1, ddof=1) / np.sqrt(N_repeats) / self.m_repeated
+
+        fig, ax = plt.subplots()
+        ax.errorbar(self.m_repeated, mean_min_arr, yerr=std_mean_min_arr, fmt="v", label=r"$\min(\bar{s}) / m $", color="k")
+        ax.errorbar(self.m_repeated, mean_max_arr, yerr=std_mean_max_arr, fmt="^", label=r"$\max(\bar{s}) / m $", color="k")
+        ax.set(xlabel=r"$m$", ylabel="Log Price", yscale="log", xscale="log")
+        ax.set_title(f"Repeated measurements of min and max salary, N={N_repeats}, t={time_steps}", fontsize=10)
+        ax.grid()
+        
+        self._add_legend(ax, ncols=2, y=0.9)
+        self._save_fig(fig, "repeated_mutation_size")
+        plt.show()
+            
+        
+    def plot_multiple_prob_expo(self, group_name_list):
+        """Plot the mean salary for different probability exponents each on their own subplot
+        """       
+        # Load data
+        self._get_data(self.group_name)
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        prob_expo_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            prob_expo = self.prob_expo
+            mean_salary_list[i] = mean_salary
+            prob_expo_list[i] = prob_expo
+        
+        # Create figure
+        # Calculate nrows and ncols
+        nrows = 2
+        ncols = (len(group_name_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
+        c_list = general_functions.list_of_colors[:len(group_name_list)]
+        
+        for i, (mean_salary, expo) in enumerate(zip(mean_salary_list, prob_expo_list)):
+            ax = axs[i//ncols, i%ncols]
+            ax.plot(time_vals, mean_salary, c=c_list[i])
+            ax.set_title(fr"Exponent = {int(expo)}", fontsize=8)
+            ax.set(yscale="log")
+            ax.grid()
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Log Price")
+        
+        # save show
+        self._save_fig(fig, "multiple_prob_expo")
+        plt.show()
+        
+        
+    def plot_salary_and_debt_distributions(self):
+        """Plot the salary and debt distributions at the final time step
+        """
+        # Get data
+        self._get_data(self.group_name)
+        s = self.s[:, -1]
+        d = self.d[:, -1]
+        s_mean = np.mean(s)
+        s_median = np.median(s)
+        # Bins
+        Nbins = int(np.sqrt(self.N))
+        fig, (ax_s, ax_d) = plt.subplots(nrows=2)
+        ax_s.axvline(x=s_mean, ls="--", c="k", label="Mean")
+        ax_s.axvline(x=s_median, ls=":", c="k", label="Median")
+        ax_s.hist(s, bins=Nbins, color=self.colours["salary"])
+        ax_d.hist(d, bins=Nbins, color=self.colours["debt"])
+        
+        ax_s.set(xlabel="Salary", ylabel="Counts", yscale="log")
+        ax_d.set(xlabel="Debt", yscale="log", ylabel="Counts")
+        ax_s.set_title("Salary distribution", fontsize=8)
+        ax_d.set_title("Debt distribution", fontsize=8)
+        ax_s.grid() 
+        ax_d.grid()
+        self._add_legend(ax_s, ncols=2, fontsize=8)
+        fig.suptitle("Final time distributions", fontsize=12)
+        
+        self._save_fig(fig, "salary_and_debt_distributions")
+        plt.show()
+        
