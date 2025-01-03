@@ -1,16 +1,17 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import SymLogNorm, LogNorm
+import matplotlib.animation as animation
+from matplotlib.ticker import LogFormatterMathtext
 from pathlib import Path
 import h5py
 import functools
-import matplotlib.animation as animation
 
 from scipy.signal import find_peaks
 
 # My files
 import general_functions
-from redistribution_no_m_master import dir_path_output, dir_path_image, group_name, ds_space, rf_space
+from redistribution_no_m_master import dir_path_output, dir_path_image, group_name, ds_space, rf_space, time_steps, number_of_companies, number_of_workers
 
 
 class BankVisualization(general_functions.PlotMethods):
@@ -26,44 +27,100 @@ class BankVisualization(general_functions.PlotMethods):
         self.dir_path_image = dir_path_image
         self.data_path = dir_path_output / "redistribution_no_m_simulation_data.h5"
         
-        # Load data        
-        with h5py.File(self.data_path, "r") as file:
-            data_group = file[self.group_name]
-            # Print the names of all groups in file
-            self.filename = data_group.name.split("/")[-1]
+        try:
+            # Load data        
+            with h5py.File(self.data_path, "r") as file:
+                data_group = file[self.group_name]
+                # Print the names of all groups in file
+                self.filename = data_group.name.split("/")[-1]
+                
+                # Company
+                self.w = data_group["w"][:]
+                self.d = data_group["d"][:]
+                self.s = data_group["s"][:]
+                
+                # System
+                self.interest_rate = data_group["interest_rate"][:]
+                self.went_bankrupt = data_group["went_bankrupt"][:]
+                self.system_money_spent = data_group["system_money_spent"][:]
+                # self.percent_responsible_for_mu_majority = data_group["percent_responsible"][:]
+                
+                # Peaks
+                try:
+                    self.peak_idx = data_group["peak_idx"][:]
+                    self.peak_vals = data_group["peak_vals"][:]
+                except KeyError:
+                    print("No peak data found in main file")
+                    self.peak_idx = None
+                    self.peak_vals = None
             
-            # Company
-            self.w = data_group["w"][:]
-            self.d = data_group["d"][:]
-            self.s = data_group["s"][:]
-            
-            # System
-            self.interest_rate = data_group["interest_rate"][:]
-            self.went_bankrupt = data_group["went_bankrupt"][:]
-            self.system_money_spent = data_group["system_money_spent"][:]
-            
-            # Peaks
-            try:
-                self.peak_idx = data_group["peak_idx"][:]
-                self.peak_vals = data_group["peak_vals"][:]
-            except KeyError:
-                print("No peak data found in main file")
-                self.peak_idx = None
-                self.peak_vals = None
-        
-            # Attributes
-            self.ds = data_group.attrs["salary_increase"]
-            self.rf = data_group.attrs["interest_rate_free"]
-            self.W = data_group.attrs["W"]
-            
-        self.N = self.w.shape[0]
-        self.time_steps = self.w.shape[1]
-        self.time_values = np.arange(self.time_steps)
+                # Attributes
+                self.ds = data_group.attrs["salary_increase"]
+                self.rf = data_group.attrs["interest_rate_free"]
+                self.W = data_group.attrs["W"]
+                self.mutation_magnitude = data_group.attrs["mutation_magnitude"]
+                
+            self.N = self.w.shape[0]
+            self.time_steps = self.w.shape[1]
+            self.time_values = np.arange(self.time_steps)
+        except KeyError:
+            print("Mainfile not found")
 
     
     def _get_group_name(self) -> str:
-        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds:.3f}_rf{self.rf:.3f}_" + self.T_func_name
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds:.3f}_rf{self.rf:.3f}_mutation{self.mutation_magnitude}_" + self.T_func_name
 
+
+    def _get_group_name_except_ds_rf(self, full_group_name: str) -> str:
+        parts_until_ds = full_group_name.split("ds")
+        parts_after_rf = full_group_name.split("_")
+        first_part = parts_until_ds[0]
+        last_part = parts_after_rf[-1]
+        return first_part + last_part
+
+    
+    def _get_ds_and_rf_from_name(self, full_group_name: str) -> tuple:
+        # Get ds by finding the first occurence of "ds" and then taking the float value after that
+        parts = full_group_name.split("ds")
+        ds = float(parts[1].split("_")[0])
+        # Do the same thing for rf
+        parts = full_group_name.split("rf")
+        rf = float(parts[1].split("_")[0])
+        return ds, rf
+    
+    
+    def _find_all_ds_rf_data(self) -> tuple:
+        """Go through all data groups and find the ds, rf and salary data.
+        """
+        # Empty lists
+        ds_list = []  # List of ds values, not ds_space!
+        rf_list = []
+        salary_list = []
+        
+        desired_group_name = self._get_group_name_except_ds_rf(self.group_name)  # Based on the current parameters in redistribution_no_m_master.py
+        
+        # Loop over all groups in the file, and get all groups that have a matching name except for the ds and rf values
+        with h5py.File(self.data_path, "r") as file:
+            if file.keys() == 0:
+                print("No groups found in file")
+                return None, None, None
+            for group in file.keys():
+                # Check if the non-ds and rf part matches the desired group name
+                group_name_without_ds_rf = self._get_group_name_except_ds_rf(group)
+                if group_name_without_ds_rf == desired_group_name:
+                    # Get ds and rf from name, and salary from datafile
+                    ds, rf = self._get_ds_and_rf_from_name(group)
+                    data_group = file[group]
+                    salary = data_group["s"][:]
+                    # Append data
+                    ds_list.append(ds)
+                    rf_list.append(rf)
+                    salary_list.append(salary)
+        
+        
+        print(f"Loaded {len(ds_list)} datasets from name {desired_group_name}")
+        return np.array(ds_list), np.array(rf_list), np.array(salary_list)
+        
     
     def plot_companies(self, N_plot):
         w_plot = self.w[: N_plot, :].T
@@ -123,7 +180,7 @@ class BankVisualization(general_functions.PlotMethods):
         fig, (ax, ax1) = plt.subplots(nrows=2)
 
         # ax Interest rate and free interest rate
-        ax.axhline(y=0.05, ls="--", label="Interest rate free")
+        ax.axhline(y=self.rf, ls="--", label="Interest rate free")
         ax.plot(self.time_values, self.interest_rate, label="Interest rate", c="firebrick")
         ax.set(ylabel="Interest rate", xlim=(0, self.time_steps))
         ax.grid()
@@ -322,7 +379,7 @@ class BankVisualization(general_functions.PlotMethods):
         # Save and show
         self._save_fig(fig, "salary_analysis")
         if self.show_plots: plt.show()
-        
+    
     
     def s_min(self):
         # Load multiple files and get their salary values
@@ -379,7 +436,67 @@ class BankVisualization(general_functions.PlotMethods):
         if self.show_plots: plt.show()
 
 
-    def period_as_function_of_ds_and_rf(self):
+    def frequency_heatmap(self):
+        # Load data
+        with h5py.File(self.data_path, "r") as file:
+            # Group name is PSD
+            PSD_gname = f"PSD_Steps{time_steps}_N{number_of_companies}_W{number_of_workers}_{self.T_func_name}"
+            data = file[PSD_gname]
+            ds_space = data["ds_space"][:]
+            rf_space = data["rf_space"][:]
+            freqs_array = data["dominant_freqs"][:]
+            powers_array = data["dominant_powers"][:]
+        
+        # Create figure
+        fig, ax = plt.subplots(ncols=2, nrows=2)
+        
+        ax_f1 = ax[0, 0]  # Frequency 1
+        ax_f2 = ax[1, 0]  # Frequency 2
+        ax_high = ax[0, 1]  # 
+        ax_low = ax[1, 1]
+
+        f1 = freqs_array[:, :, 0]
+        f2 = freqs_array[:, :, 1]
+
+        f_high = np.fmax(f1, f2)    
+        f_low = np.minimum(f1, f2)
+        
+        # Limits
+        vmin = np.nanmin(freqs_array)
+        vmax = np.nanmax(freqs_array)
+        
+        # Cmap
+        cmap_f1 = plt.colormaps.get_cmap("hot")
+        cmap_f2 = plt.colormaps.get_cmap("hot")
+        
+        # Imshow        
+        extent = [ds_space.min(), ds_space.max(), rf_space.min(), rf_space.max()]
+        ax_f1.imshow(f1, aspect="auto", cmap=cmap_f1, vmin=vmin, vmax=vmax, extent=extent, origin="lower")  # contourf gives better result once the max/min data is fixed
+        ax_f2.imshow(f2, aspect="auto", cmap=cmap_f2, vmin=vmin, vmax=vmax, extent=extent, origin="lower")
+        ax_high.imshow(f_high, aspect="auto", cmap=cmap_f1, vmin=vmin, vmax=vmax, extent=extent, origin="lower")
+        ax_low.imshow(f_low, aspect="auto", cmap=cmap_f1, vmin=vmin, vmax=vmax, extent=extent, origin="lower")
+        
+        # Add colorbars
+        cbar_ticks = np.array([vmin, 1e-3, vmax])#np.logspace(np.log10(vmin), np.log10(vmax), num=5)
+        sm_f1 = plt.cm.ScalarMappable(cmap=cmap_f1, norm=LogNorm(vmin=vmin, vmax=vmax))        
+        cbar = fig.colorbar(sm_f1, ax=ax.ravel().tolist(), label="Frequency", format=LogFormatterMathtext())
+        cbar.set_ticks(cbar_ticks)
+        cbar.set_ticklabels([f"$10^{{{np.log10(x).round(1)}}}$" for x in cbar_ticks])  # Custom tick labels in LaTeX format
+        
+        # Labels
+        ax_f1.set(title="First dominant frequency", ylabel=r"$\Delta s$")
+        ax_f2.set(title="Second dominant frequency", ylabel=r"$\Delta s$", xlabel=r"$r_f$")
+        ax_high.set(title="High frequency")
+        ax_low.set(title="Low frequency", xlabel=r"$r_f$")
+        
+        # Parameter text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax_f1)
+        # Save and show
+        self._save_fig(fig, "frequency_ds_rf")
+        if self.show_plots: plt.show()
+
+
+    def frequency_as_function_of_ds_and_rf(self):
         # Load data
         period_mean_arr = np.ones((len(ds_space), len(rf_space))) * 1e-8
         amplitude_mean_arr = np.ones((len(ds_space), len(rf_space))) * 1e-8
@@ -443,6 +560,8 @@ class BankVisualization(general_functions.PlotMethods):
         ax_period.set(title="Period mean", ylabel=r"$\Delta s$", xlabel=r"$rf$")
         ax_amplitude.set(title="Amplitude mean", ylabel=r"$\Delta s$", xlabel=r"$rf$")
         
+        # Parameter text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax_period)
         # Save and show
         self._save_fig(fig, "period_ds_rf")
         if self.show_plots: plt.show()
@@ -512,6 +631,161 @@ class BankVisualization(general_functions.PlotMethods):
         if self.add_parameter_text_to_plot: self._add_parameters_text(ax_s)
         # Save and show
         self._save_fig(fig, "time_scale")
+        if self.show_plots: plt.show()
+        
+
+    def multiple_salary(self):
+        """Plot the mean salary for different sets of (ds, rf) values."""
+        # Get the data
+        ds_list, rf_list, salary_list = self._find_all_ds_rf_data()
+        time_steps = salary_list[0].shape[1]
+
+        # Calculate common ylim
+        # Ignore the first 1000 values to avoid the warmup phase
+        ymax = np.max([np.mean(salary[:, 1000:], axis=0) for salary in salary_list])
+        ymin = np.min([np.mean(salary[:, 1000:], axis=0) for salary in salary_list])
+        ylim = (ymin, ymax)
+        
+        def _plotter(axis, idx):
+            axis.plot(np.mean(salary_list[idx], axis=0), ls="-")
+            axis.text(s=fr"$\Delta s=${ds_list[idx]}, $r_f=${rf_list[idx]}", fontsize=10, x=0.05, y=0.05, transform=axis.transAxes)
+            axis.set(yscale="log", xlim=(0, time_steps), ylim=ylim)
+            axis.set_xticklabels([])
+            axis.set_yticklabels([])
+            axis.grid()
+        
+        # Determine the number of subplots based on the number of ds values. 
+        ncols = 4
+        nrows = len(ds_list) // ncols
+        fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize=(20, 16))
+        
+        for i in range(ncols*nrows):
+            _plotter(ax[i // ncols, i % ncols], i)
+        
+        for j in range(3):
+            yticks = [1e-4, 1e-2, 1e0]
+            ylabels = [f"$10^{{{int(np.log10(y))}}}$" for y in yticks]
+            xticks = np.linspace(0, time_steps, 3, dtype=int)
+            ax[-1, j].set_xticks(xticks, labels=xticks)
+            ax[j, 0].set_yticks(yticks, labels=ylabels)
+            
+        fig.suptitle(r"Mean salary for different $\Delta s$ and $r_f$ values")
+        # Add parameters text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax[0, 0], fontsize=4, y=0.7)
+        # Save and show
+        self._save_fig(fig, "multiple_salary")
+        if self.show_plots: plt.show()        
+
+    
+    def salary_mean_spread(self):
+        # - Plot mean salary over time and std/mean salary over time 
+        # Calculate the mean salary and the std/mean salary
+        ds_list, rf_list, salary_list = self._find_all_ds_rf_data()
+        
+        shape = (len(rf_space), len(ds_space))
+        mean_salary_list = np.reshape([np.mean(salary) for salary in salary_list], shape)
+        std_salary_list = np.reshape([np.std(salary) for salary in salary_list], shape)
+        spread_arr = np.array(std_salary_list) / np.array(mean_salary_list)
+
+        extent = [np.min(ds_space), np.max(ds_space), np.min(rf_space), np.max(rf_space)]        
+        fig, ax = plt.subplots(nrows=2, ncols=2)
+        ax0 = ax[0, 1]
+        ax1 = ax[1, 1]
+        ax2 = ax[0, 0]
+        ax3 = ax[1, 0]
+        
+        # Plot
+        im = ax0.imshow(mean_salary_list, aspect="auto", cmap="magma", norm=LogNorm(), extent=extent, origin="lower")
+        im1 = ax1.imshow(spread_arr, aspect="auto", cmap="hot", extent=extent, origin="lower")
+        
+        ax2.plot(mean_salary_list.flatten(), "o")
+        ax3.plot(spread_arr.flatten(), "o")
+        
+        # Axis setup
+        ax0.set(title="Mean salary", ylabel=r"$r_f$")
+        ax1.set(title=r"Spread of salary ($\sigma / \hat{s}$)", xlabel=r"$\Delta s$", ylabel=r"$r_f$")
+        
+        # Set ticks to show actual values
+        # ax0.set_xticks(np.arange(len(ds_space)), labels=[f"{ds:.2f}" for ds in ds_space])
+        # ax0.set_yticks(np.arange(len(rf_space)), labels=[f"{rf:.2f}" for rf in rf_space])
+        # ax1.set_xticks(np.arange(len(ds_space)), labels=[f"{ds:.2f}" for ds in ds_space])
+        # ax1.set_yticks(np.arange(len(rf_space)), labels=[f"{rf:.2f}" for rf in rf_space])
+        
+        ax0.set_xticks(np.linspace(np.min(ds_space), np.max(ds_space), len(ds_space)), ds_space)
+        ax0.set_yticks(np.linspace(np.min(rf_space), np.max(rf_space), len(rf_space)), rf_space)
+        ax1.set_xticks(np.linspace(np.min(ds_space), np.max(ds_space), len(ds_space)), ds_space)
+        ax1.set_yticks(np.linspace(np.min(rf_space), np.max(rf_space), len(rf_space)), rf_space)
+        
+        xticks = [f"({rf}, {ds})" for rf in rf_space for ds in ds_space]
+        ax2.set(title="Mean salary", ylabel="Log Price", yscale="log", xlabel=r"$(r_f, ds)$")
+        ax2.set_xticks(np.arange(len(xticks)), labels=xticks, fontsize=6, rotation=45)
+        ax3.set(title="Spread of salary", ylabel="Price", xlabel=r"$(r_f, ds)$")
+        ax3.set_xticks(np.arange(len(xticks)), labels=xticks, fontsize=6, rotation=45)
+        
+        # Colorbar
+        fig.colorbar(im, ax=ax0)
+        fig.colorbar(im1, ax=ax1)
+        
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax2)
+        # Save and show
+        self._save_fig(fig, "salary_mean_and_spread_time")
+        if self.show_plots: plt.show()
+        
+        
+    def plot_compare_mutation_size(self):
+        # Load mutation size data
+        mean_salary_list = []
+        mutation_size_list = [1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, -1, -2, -3]
+        self.time_steps = 30_000
+        self.N = 250
+        self.W = 5000
+        self.ds = 0.075
+        self.rf = 0.05
+        with h5py.File(self.data_path, "r") as file:
+            for mutation in mutation_size_list:
+                self.mutation_magnitude = mutation
+                group_name = self._get_group_name()
+                data_group = file[group_name]
+                salary = data_group["s"][:]
+                mean_salary_list.append(np.mean(salary, axis=0))
+                
+                
+        # create fig
+        fig, (ax, ax1) = plt.subplots(figsize=(16, 6), nrows=2)
+        
+        # c_hline_list = ["black", "grey", "darkgrey", "gray", "lightgrey", "lightgray"]
+        
+        def _plotter(idx):
+            ax.plot(mean_salary_list[idx], label=fr"$Mutation size=${mutation_size_list[idx]}")
+            # ax.axhline(y=np.min(mean_salary_list[idx]), ls="--", c=c_hline_list[idx], label=f"Min for {mutation_size_list[idx]}")
+        
+        for i in range(len(mutation_size_list)):
+            _plotter(i)
+        
+        ax.set(xlabel="Time", ylabel="Log Price", title="Mean salary for different mutation sizes", yscale="log", xlim=(0, self.time_steps))
+        self._add_legend(ax, y=0.9, ncols=len(mutation_size_list)//2, fontsize=6)
+        ax.grid()
+        
+        # Print the minimum value of each of the datasets
+        min_salary_list = []
+        max_salary_list = []
+        # Exclude -1, -2, -3
+        for i in range(len(mutation_size_list) - 3):
+            min_salary = np.min(mean_salary_list[i][1000:] / mutation_size_list[i])
+            max_salary = np.max(mean_salary_list[i][1000:] / mutation_size_list[i])
+            min_salary_list.append(min_salary)
+            max_salary_list.append(max_salary)
+        
+        ax1.plot(mutation_size_list[:-3], min_salary_list, "o", label="Min / mutation size")
+        ax1.plot(mutation_size_list[:-3], max_salary_list, "x", label="Max / mutation size")            
+        ax1.set(xlabel="Mutation size", ylabel="Log Price", title="Min and max salary for different mutation sizes", yscale="log", xscale="log")
+        ax1.grid()
+        self._add_legend(ax1, y=0.9, ncols=2, fontsize=6)
+        
+        # Add parameters text
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax)
+        # Save and show
+        self._save_fig(fig, "mutation_size")
         if self.show_plots: plt.show()
         
 
@@ -676,6 +950,7 @@ class BankVisualization(general_functions.PlotMethods):
         # Save animation
         self._save_anim(ani, name="workforce_animation")
   
+
   
 if __name__ == "__main__":
     show_plots = True
@@ -694,8 +969,15 @@ if __name__ == "__main__":
         # bank_vis.salary_analysis()
         # bank_vis.plot_debt()
         
+        bank_vis.plot_compare_mutation_size()
+        
+        # bank_vis.multiple_salary()
+        # bank_vis.salary_mean_spread()
+        
+        # bank_vis.frequency_heatmap()
+        
         # bank_vis.s_min()
-        bank_vis.period_as_function_of_ds_and_rf()
+        # bank_vis.frequency_as_function_of_ds_and_rf()
         # bank_vis.time_scale()
         
     # -- Peak analysis -- 
