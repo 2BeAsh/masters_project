@@ -7,7 +7,7 @@ from run import file_path, group_name, dir_path_image
 
 
 class PlotMaster(general_functions.PlotMethods):
-    def __init__(self, data_group_name, show_plots=True, add_parameter_text_to_plot=True, save_figure=True):
+    def __init__(self, data_group_name, skip_values=0, show_plots=True, add_parameter_text_to_plot=True, save_figure=True):
         super().__init__(data_group_name)
         # Allow for the option of specifying a group name. Otherwise the existing group name is used.
         self.group_name = data_group_name
@@ -17,7 +17,7 @@ class PlotMaster(general_functions.PlotMethods):
         self.dir_path_image = dir_path_image
         self.loaded_groups = {}
         
-        self.skip_values = 2500
+        self.skip_values = skip_values  
         
         # Colours
         self._set_colours()
@@ -111,7 +111,7 @@ class PlotMaster(general_functions.PlotMethods):
         c0 = self.colours["salary"]
         c1 = self.colours["bankruptcy"]
         ax0.plot(time_values, mean_salary, label="Mean salary", c=c0, alpha=1)
-        ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.5, ls="dotted")
+        ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.7, ls="dotted")
         
         ax0.set(xlim=self.xlim, ylabel="Log Price", yscale="log", title="Mean salary and bankruptcies")
         ax0.set_ylabel("Log Price", color=c0)
@@ -170,7 +170,7 @@ class PlotMaster(general_functions.PlotMethods):
         # Plot bankruptcies for the first company on the debt subplot
         time_bankrupt = time_values[self.first_company_went_bankrupt[self.skip_values:] == 1]
         y_bankrupt = np.zeros(len(time_bankrupt))
-        ax_d.scatter(time_bankrupt, y_bankrupt, c="black", marker="x", s=7)
+        ax_d.scatter(time_bankrupt, y_bankrupt, c=self.colours["bankruptcy"], marker="x", s=20)
 
         # ax_w - workers
         ax_w.plot(time_values, w.T)
