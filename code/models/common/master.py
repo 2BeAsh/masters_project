@@ -23,7 +23,7 @@ class WorkForce():
                 
         
     def _get_group_name(self):
-        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_wupdate{self.worker_update_method}_rf{self.rf_name}"
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_wupdate{self.worker_update_method}_rf{self.rf_name}_ProbExpo{self.prob_exponent}"
     
     
     def _initialize_market_variables(self):
@@ -39,6 +39,7 @@ class WorkForce():
         self.r = self.rf
         self.PD = 0
         self.went_bankrupt = 0
+        self.first_company_went_bankrupt = 0
         self.mutations_arr = 0
         self.mu = np.mean(self.salary) * self.W
         self.system_money_spent = self.mu
@@ -53,6 +54,7 @@ class WorkForce():
         # System
         self.r_hist = np.zeros(self.time_steps, dtype=np.float32)
         self.went_bankrupt_hist = np.ones(self.time_steps, dtype=np.int32)
+        self.first_company_went_bankrupt_hist = np.zeros(self.time_steps, dtype=np.int32)
         self.mu_hist = np.zeros(self.time_steps, dtype=np.float32)
         self.mutations_hist = np.ones(self.time_steps, dtype=np.float32)
         # Initial values of history arrays
@@ -61,7 +63,8 @@ class WorkForce():
         self.s_hist[:, 0] = self.salary
         self.r_hist[0] = self.r
         self.went_bankrupt_hist[0] = self.went_bankrupt
-        self.mutations_hist[0] = self.mutations_arr
+        self.first_company_went_bankrupt_hist[0] = self.first_company_went_bankrupt
+        self.mutations_hist[0] = 0
         self.mu_hist[0] = self.mu
         
     
@@ -73,6 +76,7 @@ class WorkForce():
         # System
         self.r_hist[self.current_time] = self.r
         self.went_bankrupt_hist[self.current_time] = self.went_bankrupt
+        self.first_company_went_bankrupt_hist[self.current_time] = self.first_company_went_bankrupt * 1
         self.mu_hist[self.current_time] = self.mu
         self.mutations_hist[self.current_time] = np.sum(self.mutations_arr)
         # Reset values for next step
