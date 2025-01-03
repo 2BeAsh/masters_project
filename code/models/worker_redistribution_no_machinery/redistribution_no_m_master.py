@@ -206,7 +206,7 @@ class Workforce():
        
     def _probability_of_default(self, time_step, T) -> None:
         if time_step > T:
-            bankrupt_T_ago_to_now = np.append(self.went_bankrupt_hist[time_step - T : time_step - 1], [self.went_bankrupt])
+            bankrupt_T_ago_to_now = np.append(self.went_bankrupt_hist[time_step - T : time_step], [self.went_bankrupt])
             self.PD = np.mean(bankrupt_T_ago_to_now) / self.N
             self.PD = np.minimum(self.PD, 0.99)  # Prevent division by zero.
         
