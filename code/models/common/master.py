@@ -29,7 +29,7 @@ class WorkForce():
     def _initialize_market_variables(self):
         # Company variables
         self.w = np.ones(self.N, dtype=np.int32)
-        self.d = np.zeros(self.N, dtype=np.float32)
+        self.d = -self.mutation_magnitude * np.ones(self.N, dtype=np.float32)
         self.salary = np.random.uniform(self.salary_min+self.mutation_magnitude, 5*self.mutation_magnitude, self.N)
         
         # Initial values
@@ -39,7 +39,7 @@ class WorkForce():
         self.r = self.rf
         self.PD = 0
         self.went_bankrupt = 0
-        self.first_company_went_bankrupt = 0
+        self.went_bankrupt_idx = np.zeros(self.N, dtype=np.bool)
         self.mutations_arr = 0
         self.mu = np.mean(self.salary) * self.W
         self.system_money_spent = self.mu
@@ -54,7 +54,7 @@ class WorkForce():
         # System
         self.r_hist = np.zeros(self.time_steps, dtype=np.float32)
         self.went_bankrupt_hist = np.ones(self.time_steps, dtype=np.int32)
-        self.first_company_went_bankrupt_hist = np.zeros(self.time_steps, dtype=np.int32)
+        self.went_bankrupt_idx_hist = np.zeros((self.N, self.time_steps), dtype=np.bool)
         self.mu_hist = np.zeros(self.time_steps, dtype=np.float32)
         self.mutations_hist = np.ones(self.time_steps, dtype=np.float32)
         # Initial values of history arrays
@@ -63,7 +63,7 @@ class WorkForce():
         self.s_hist[:, 0] = self.salary
         self.r_hist[0] = self.r
         self.went_bankrupt_hist[0] = self.went_bankrupt
-        self.first_company_went_bankrupt_hist[0] = self.first_company_went_bankrupt
+        self.went_bankrupt_idx_hist[:, 0] = self.went_bankrupt_idx
         self.mutations_hist[0] = 0
         self.mu_hist[0] = self.mu
         
@@ -76,7 +76,7 @@ class WorkForce():
         # System
         self.r_hist[self.current_time] = self.r
         self.went_bankrupt_hist[self.current_time] = self.went_bankrupt
-        self.first_company_went_bankrupt_hist[self.current_time] = self.first_company_went_bankrupt * 1
+        self.went_bankrupt_idx_hist[:, self.current_time] = self.went_bankrupt_idx
         self.mu_hist[self.current_time] = self.mu
         self.mutations_hist[self.current_time] = np.sum(self.mutations_arr)
         # Reset values for next step
@@ -89,6 +89,7 @@ class WorkForce():
         # Initialize variables and history arrays
         # self._initialize_market_variables()  # Moved to __init__
         self._initialize_history_arrays()
+        self._update_workers()  # Run once to get initial values for workers
         
         # Run simulation
         for i in tqdm(range(1, self.time_steps)):
