@@ -53,6 +53,8 @@ class MethodsWorkForce(WorkForce):
             self.func_bankrupt_salary = self.bankrupt_salary_log
         elif self.mutation_method == "mean":
             self.func_bankrupt_salary = self._bankrupt_salary_mean
+        elif self.mutation_method == "worker_opinion":
+            self.func_bankrupt_salary = self._bankrupt_salary_worker_opinion
         else:
             print("Mutation magnitude must be `constant`, 'spread' or 'lastT', 'minimum', ")
     
@@ -115,8 +117,8 @@ class MethodsWorkForce(WorkForce):
         want_to_increase = self.d - self.d_hist[:, self.current_time - 1] <= 0
         # Perform update and enforce minimum salary
         self.salary = np.where(want_to_increase, ds_pos, ds_neg) + additive_noise
-        self.salary = np.maximum(self.salary, self.salary_min)
-        
+        self.salary = np.maximum(self.salary, self.salary_min)            
+    
     
     def _update_salary_mutate(self):
         """All companies update their salaries depending on whether they made a profit or not.
@@ -188,29 +190,18 @@ class MethodsWorkForce(WorkForce):
         if self.worker_update_method == "unlimited":
             self.W = self.w.sum()
     
-        if bankrupt_idx[0] == True:
-            self.first_company_went_bankrupt = 1
-        else:
-            self.first_company_went_bankrupt = 0
-
-    
     
     def _bankruptcy_negative_money(self):    
         """A company goes bankrupt if it any debt i.e. no money
         """
-        bankrupt_idx = self.d > 0
-        self.went_bankrupt = bankrupt_idx.sum()
+        self.went_bankrupt_idx = self.d > 0
+        self.went_bankrupt = self.went_bankrupt_idx.sum()
         # Reset values / create new companies
-        self.w[bankrupt_idx] = 0
-        self.d[bankrupt_idx] = -1e-8
-        self.func_bankrupt_salary(bankrupt_idx)
+        self.w[self.went_bankrupt_idx] = 0
+        self.d[self.went_bankrupt_idx] = -self.mutation_magnitude
+        self.func_bankrupt_salary(self.went_bankrupt_idx)
         self.salary = np.maximum(self.salary, self.salary_min)
         
-        if bankrupt_idx[0] == True:
-            self.first_company_went_bankrupt = 1
-        else:
-            self.first_company_went_bankrupt = 0
-    
     
     def _bankrupt_salary_mutate(self, bankrupt_idx):
         """Bankrupt companies pick a non-bankrupt company and mutate their salary.
@@ -219,19 +210,40 @@ class MethodsWorkForce(WorkForce):
             bankrupt_idx (np.ndarray): List of companies who went bankrupt
         """
         # Sample indices from non-bankrupt companies with a positive number of workers
+        N_bankrupt = bankrupt_idx.sum()
         idx_not_bankrupt = ~bankrupt_idx
         idx_positive_workers = self.w > 0
         idx_not_bankrupt_with_positive_workers = idx_not_bankrupt & idx_positive_workers
         idx_surviving_companies = np.arange(self.N)[idx_not_bankrupt_with_positive_workers]
-        self.mutations_arr = np.random.uniform(-self.mutation_magnitude, self.mutation_magnitude, size=self.went_bankrupt)
+        mutations = np.random.uniform(-self.mutation_magnitude, self.mutation_magnitude, size=N_bankrupt)
+        s_before = self.salary * 1
         if len(idx_surviving_companies) != 0:
-            new_salary_idx = np.random.choice(idx_surviving_companies, replace=True, size=self.went_bankrupt)
-            self.salary[bankrupt_idx] = self.salary[new_salary_idx] + self.mutations_arr
-            self.salary = np.maximum(self.salary, self.salary_min)
+            new_salary_idx = np.random.choice(idx_surviving_companies, replace=True, size=N_bankrupt)
+            salary_pre_max = self.salary[new_salary_idx] + mutations
+            self.salary[bankrupt_idx] = np.maximum(salary_pre_max, self.salary_min)
+            self.mutations_arr = self.salary - s_before  # Actual mutations taking the max into account
+            
         else:
-            self.salary = np.random.uniform(self.salary_min, np.max(self.salary[bankrupt_idx]), self.N)
+            print("Everyone went bankrupt")
+            self.salary = np.random.uniform(self.salary_min, np.max(self.salary), self.N)
             self.mutations_arr = 0
+
+    
+    def _bankrupt_salary_worker_opinion(self, bankrupt_idx):
+        """When choosing a new salaries, companies pick a random worker and chooses the salary that worker is given. 
+        In other words, they choose the salary of a random company proportionally to the number of workers in that company.
+
+        Args:
+            bankrupt_idx (_type_): _description_
+        """
+        # Find indices of companies chosen
+        # Since all companies who just went bankrupt have 0 workers, it is unnecessary to exclude bankrupt companies
+        P_company = self.w / self.w.sum()  # Since workers have not been redistributed since the bankruptcies, sum(w) != W
+        chosen_company_idx = np.random.choice(np.arange(self.N), size=self.went_bankrupt, replace=True, p=P_company)
         
+        # Update the salary
+        self.salary[bankrupt_idx] = self.salary[chosen_company_idx]
+
     
     def _bankrupt_salary_lastT(self, bankrupt_idx):
         # Salaries are picked randomly from the last T time steps' salaries.
@@ -350,8 +362,9 @@ class MethodsWorkForce(WorkForce):
         
 
     def _time_scale(self):
+        if self.rf != 0.:
+            return np.int32(1 / self.r)
         return 1
-        return np.int32(1 / self.r)
 
 
     def _store_values_in_history_arrays(self):
