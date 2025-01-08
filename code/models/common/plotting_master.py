@@ -589,7 +589,7 @@ class PlotMaster(general_functions.PlotMethods):
             ax.set(xscale="log", yscale="linear", xlim=xlim, ylim=ylim)
             ax.set_title(f"Time = {time_vals[idx]}, N={len(s_w0[idx])}", fontsize=8)
             ax.grid()
-            self._add_legend(ax, ncols=3, x=0.5, y=0.95, fontsize=7)
+            self._add_legend(ax, ncols=3, x=0.5, y=0.85, fontsize=7)
         
         fig, axs = plt.subplots(ncols=ncols, nrows=nrows, figsize=(12, 8))
         for i in range(len(time_vals)):
@@ -611,69 +611,204 @@ class PlotMaster(general_functions.PlotMethods):
 
 
         
-    def animate_worker_salary(self):
-        """Make a histogram animation of the worker and salary distributions at each time step
+    def animate_w0(self, skip_time_steps=0):
+        """Make a histogram animation of the salary distribution of companies with w=0 at each time step together with the salary picked of bankrupt companies
         """
         # Load data and exclude warmup
         self._get_data(self.group_name)
-        w = self.w[:, self.skip_values:]
-        s = self.s[:, self.skip_values:]
-        time_steps = self.time_steps - self.skip_values
-        # Since cannot show w=0 in log, set w=0 to w=1e-1
-        w = np.where(w == 0, 1e-1, w)
-        # Since s=1e-8 is ugly in log, set anything in s below s=1e-4 to s=1e-4
+
+        # Find the salary of companies that went bankrupt at the times in time_vals together with the mean salary
+        s_w0_no_bankrupt = []
+        s_means = []
+        s_companies_went_bankrupt = []
         
-        # Bin data
-        Nbins = int(np.sqrt(self.N))
-        # s_bins = 10 ** np.linspace(np.log10(np.min(s)*1e4), np.log10(np.max(s)), Nbins)
-        # w_bins = 10 ** (np.append([np.log10(np.min(w)), np.log10(1)],  # All w=0 is captured in one bin. 0.9 is arbitrary number between 0 and 1
-        #                           np.linspace(np.log10(2), np.log10(np.max(w)), Nbins-1)))
-        # s_bins = np.linspace(np.min(s), np.max(s), Nbins)
-        # w_bins = np.arange(np.min(w), np.max(w), np.ceil((np.max(w) - np.min(w)) / Nbins))
+        frames_to_play = np.arange(self.skip_values, self.time_steps)[::skip_time_steps]
         
-        s_bins = np.geomspace(s.min(), s.max(), Nbins)
-        w_bins = np.geomspace(w.min(), w.max(), Nbins, dtype=np.int32)  # Having integers makes the bins NOT equal in width.
+        for t in frames_to_play:
+            w0 = self.w[:, t] == 0
+            did_not_go_bankrupt = self.went_bankrupt_idx[:, t] == 0
+            did_go_bankrupt = self.went_bankrupt_idx[:, t] == 1
+            no_bankrupt_idx = np.logical_and(w0, did_not_go_bankrupt)
+            s_w0_no_bankrupt_picked = self.s[no_bankrupt_idx, t]
+            salaries_bankrupt = self.s[did_go_bankrupt, t]
+            s_mean = np.mean(self.s[:, t])  # Mean of ALL companies at time t
+            # Store values
+            s_w0_no_bankrupt.append(s_w0_no_bankrupt_picked)
+            s_companies_went_bankrupt.append(salaries_bankrupt)
+            s_means.append(s_mean)
+
+        # Find the number of bins based on the length of the list of salary differences with the most elements
+        Nbins = int(np.sqrt(max([len(salaries) for salaries in s_w0_no_bankrupt])))
+        flattened_data = np.concatenate(s_w0_no_bankrupt)
+        logbins = np.geomspace(np.min(flattened_data), np.max(flattened_data), Nbins)
         
         # Figure setup        
-        fig, (ax_s, ax_w) = plt.subplots(nrows=2)
-        _, _, s_bar_container = ax_s.hist(s[:, 0], bins=s_bins, color=self.colours["salary"])  # Initial histogram 
-        ax_s.set(xlim=(s_bins[0], s_bins[-1]), xlabel=r"Salary $s$", ylabel="Counts", xscale="log", yscale="log")
+        fig, ax_s = plt.subplots()
+        _, _, s_bar_container = ax_s.hist(s_w0_no_bankrupt[0], bins=logbins, color=self.colours["salary"])  # Initial histogram 
+        _, _, bankrupt_bar_container = ax_s.hist(s_companies_went_bankrupt[0], bins=logbins, color=self.colours["bankruptcy"], alpha=0.6)  # Initial histogram
+        ax_s.set(xlim=(logbins[0], logbins[-1]), xlabel=r"Workers $w$", ylabel="Counts", xscale="log", yscale="log")
         ax_s.grid()
-        s_xticks = np.linspace(0, s_bins[-1], 10, dtype=int)
-        # ax_s.set_xticks(s_xticks, s_xticks)
-
-        _, edges, w_bar_container = ax_w.hist(w[:, 0], bins=w_bins, color=self.colours["workers"])  # Initial histogram         
-        ax_w.set(xlim=(w.min(), w_bins[-1]), xlabel=r"Number of employees $w$", ylabel="Counts", xscale="log", yscale="log")
-        ax_w.grid()
-        xticks = np.linspace(0, w_bins[-1], 10, dtype=int)
-        # ax_w.set_xticks(xticks, xticks)
         
-        fig.suptitle(f"Time = {self.skip_values}")
+        
+        def _add_text_and_title(idx):            
+            """ Set the title to the current time step.
+            Display the mean salary, the number of companies at w=0 and the number of bankrupt companies
+            """
+            fig.suptitle(f"Time = {frames_to_play[idx]}")
+            text_to_display = f"Mean salary = {s_means[idx]:.1e}\nN(w=0) non-bankrupt = {len(s_w0_no_bankrupt[idx])}\nN(w=0) bankrupt = {len(s_companies_went_bankrupt[idx])}"
+            ax_s.text(0.95, 0.85, text_to_display, transform=ax_s.transAxes, bbox=dict(facecolor='darkgray', alpha=0.5), horizontalalignment='right')
         
         # Text
-        if self.add_parameter_text_to_plot: self._add_parameters_text(ax_s)
-         
-        def animate(i, s_bar_container, w_bar_container):
+        _add_text_and_title(idx=0)
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax_s, fontsize=6, y=0.85)
+
+        def animate(i, s_bar_container, bankrupt_bar_container):
             """Frame animation function for creating a histogram."""
-            # s histogram
-            s_data = s[:, i]
-            n_s, _ = np.histogram(s_data, s_bins)
+            # s no bankrupt histogram
+            s_data = s_w0_no_bankrupt[i]
+            n_s, _ = np.histogram(s_data, logbins)
             for count_s, rect_s in zip(n_s, s_bar_container.patches):
                 rect_s.set_height(count_s)
 
-            # w histogram
-            data_w = w[:, i]
-            n_w, _ = np.histogram(data_w, w_bins)
-            for count, rect in zip(n_w, w_bar_container.patches):
+            # Bankrupt histogram
+            data_bankrupt = s_companies_went_bankrupt[i]
+            n_w, _ = np.histogram(data_bankrupt, logbins)
+            for count, rect in zip(n_w, bankrupt_bar_container.patches):
                 rect.set_height(count)
+
+            # Set the title and text
+            _add_text_and_title(i)
                         
-            # Title
-            fig.suptitle(f"Time = {i+self.skip_values}")
-            return s_bar_container.patches + w_bar_container.patches
+            return s_bar_container.patches + bankrupt_bar_container.patches
         
         # Create the animation
-        anim = functools.partial(animate, s_bar_container=s_bar_container, w_bar_container=w_bar_container)  # Necessary when making histogram
-        ani = animation.FuncAnimation(fig, anim, frames=time_steps, interval=1)
+        anim = functools.partial(animate, s_bar_container=s_bar_container, bankrupt_bar_container=bankrupt_bar_container)  # Necessary when making histogram
+        ani = animation.FuncAnimation(fig, anim, frames=len(frames_to_play), interval=1)
         
         # Save animation
-        self._save_anim(ani, name="worker_salary_animation")        
+        self._save_anim(ani, name="w0_anim")        
+        
+
+    def animate_w0_wnon0(self, skip_time_steps=0):
+        """Make a histogram animation of the salary distribution of companies with w=0 at each time step together with the salary picked of bankrupt companies, and another with w>0
+        """
+        # Load data and exclude warmup
+        self._get_data(self.group_name)
+
+        # Find the salary of companies that went bankrupt at the times in time_vals together with the mean salary
+        s_wnon0 = []
+        s_w0_no_bankrupt = []
+        s_means = []
+        s_medians = []
+        s_companies_went_bankrupt = []
+        
+        frames_to_play = np.arange(self.skip_values, self.time_steps)[::skip_time_steps]
+        
+        # Calculate the bin counts for the histogram
+        
+        for t in frames_to_play:
+            w_non0 = self.w[:, t] > 0
+            w0 = self.w[:, t] == 0
+            did_not_go_bankrupt = self.went_bankrupt_idx[:, t] == 0
+            did_go_bankrupt = self.went_bankrupt_idx[:, t] == 1
+            no_bankrupt_idx = np.logical_and(w0, did_not_go_bankrupt)
+            s_w0_no_bankrupt_picked = self.s[no_bankrupt_idx, t]
+            salaries_bankrupt = self.s[did_go_bankrupt, t]
+            s_mean = np.mean(self.s[:, t])  # Mean of ALL companies at time t
+            s_median = np.median(self.s[:, t])
+            s_non0 = self.s[w_non0, t]
+            # Store values
+            s_wnon0.append(s_non0)
+            s_w0_no_bankrupt.append(s_w0_no_bankrupt_picked)
+            s_companies_went_bankrupt.append(salaries_bankrupt)
+            s_means.append(s_mean)
+            s_medians.append(s_median)
+
+
+        # Find the number of bins based on the length of the list of salary differences with the most elements
+        # The bins edges go from the minimum value to the maximum value of the salaries. The w=0 companies have lower salaries and w>0 higher
+        Nbins = int(np.sqrt(max([len(salaries) for salaries in s_wnon0])))
+        flattened_data_for_max = np.concatenate(s_wnon0)
+        flattened_data_for_min = np.concatenate(s_w0_no_bankrupt)
+        logbins = np.geomspace(np.min(flattened_data_for_min), np.max(flattened_data_for_max), Nbins)  
+        
+        # Get bin counts
+        s_wnon0_hist = []
+        s_w0_no_bankrupt_hist = []
+        s_companies_went_bankrupt_hist = []
+        
+        for i in range(len(frames_to_play)):
+            s_wnon0_hist.append(np.histogram(s_non0, bins=logbins)[0])
+            s_w0_no_bankrupt_hist.append(np.histogram(s_w0_no_bankrupt_picked, bins=logbins)[0])
+            s_companies_went_bankrupt_hist.append(np.histogram(salaries_bankrupt, bins=logbins)[0])
+
+        # Get ylim from the min and max of counts
+        ylim = (0, np.max([np.max(s_wnon0_hist), np.max(s_w0_no_bankrupt_hist), np.max(s_companies_went_bankrupt_hist)]))
+        
+        # Figure setup        
+        fig, (ax_0, ax_non0) = plt.subplots(nrows=2)
+        _, _, s_bar_container = ax_0.hist(s_w0_no_bankrupt[0], bins=logbins, color=self.colours["salary"])  # Initial histogram 
+        _, _, bankrupt_bar_container = ax_0.hist(s_companies_went_bankrupt[0], bins=logbins, color=self.colours["bankruptcy"], alpha=0.6)  # Initial histogram
+        vline_0 = ax_0.axvline(x=s_means[0], ls="--", c="k", alpha=0.8, label="Mean")
+        median_line_0 = ax_0.axvline(x=s_medians[0], ls="dotted", c="grey", alpha=0.8, label="Median")
+        ax_0.set_yscale("symlog")  
+        ax_0.set(xlim=(logbins[0], logbins[-1]), ylim=ylim, ylabel="Counts", xscale="log", title="w=0")
+        ax_0.grid()
+        
+        _, _, s_non0_bar_container = ax_non0.hist(s_wnon0[0], bins=logbins, color=self.colours["salary"])  # Initial histogram 
+        vline_non0 = ax_non0.axvline(x=s_means[0], ls="--", c="k", alpha=0.8, label="Mean")
+        median_line_non0 = ax_non0.axvline(x=s_medians[0], ls="dotted", c="grey", alpha=0.8, label="Median")
+        ax_non0.set(xlim=(logbins[0], logbins[-1]), ylim=ylim, xlabel=r"Workers $w$", ylabel="Counts", xscale="log", yscale="symlog", title="w>0")
+        ax_non0.grid()
+        
+        def _add_text_and_title(idx):            
+            """ Set the title to the current time step.
+            Display the mean salary, the number of companies at w=0 and the number of bankrupt companies
+            """
+            fig.suptitle(f"Time = {frames_to_play[idx]}")
+            text_to_display = f"Mean salary = {s_means[idx]:.1e}\nN(w=0) non-bankrupt = {len(s_w0_no_bankrupt[idx])}\nN(w=0) bankrupt = {len(s_companies_went_bankrupt[idx])}"
+            ax_0.text(0.95, 0.85, text_to_display, transform=ax_0.transAxes, bbox=dict(facecolor='darkgray', alpha=0.5), horizontalalignment='right')
+        
+        # Text
+        _add_text_and_title(idx=0)
+        if self.add_parameter_text_to_plot: self._add_parameters_text(ax_0, fontsize=6, y=0.85)
+
+        def animate(i, s_bar_container, bankrupt_bar_container, s_non0_bar_container):
+            """Frame animation function for creating a histogram."""
+            # s no bankrupt histogram
+            s_data = s_w0_no_bankrupt[i]
+            n_s, _ = np.histogram(s_data, logbins)
+            for count_s, rect_s in zip(n_s, s_bar_container.patches):
+                rect_s.set_height(count_s)
+
+            # Bankrupt histogram
+            data_bankrupt = s_companies_went_bankrupt[i]
+            n_w, _ = np.histogram(data_bankrupt, logbins)
+            for count, rect in zip(n_w, bankrupt_bar_container.patches):
+                rect.set_height(count)
+                
+            # w>0 histogram
+            s_non0_data = s_wnon0[i]
+            n_non0, _ = np.histogram(s_non0_data, logbins)
+            for count_non0, rect_non0 in zip(n_non0, s_non0_bar_container.patches):
+                rect_non0.set_height(count_non0)
+
+            # Update the mean vlines
+            vline_0.set_xdata([s_means[i], s_means[i]])
+            vline_non0.set_xdata([s_means[i], s_means[i]])
+            median_line_0.set_xdata([s_medians[i], s_medians[i]])
+            median_line_non0.set_xdata([s_medians[i], s_medians[i]])
+
+            # Set the title and text
+            _add_text_and_title(i)
+                        
+            return s_bar_container.patches + bankrupt_bar_container.patches + s_non0_bar_container.patches + [vline_0, vline_non0, median_line_0, median_line_non0]
+        
+        # Create the animation
+        anim = functools.partial(animate, s_bar_container=s_bar_container, bankrupt_bar_container=bankrupt_bar_container, s_non0_bar_container=s_non0_bar_container)  # Necessary when making histogram
+        ani = animation.FuncAnimation(fig, anim, frames=len(frames_to_play), interval=1)
+        
+        # Save animation
+        self._save_anim(ani, name="w0_wnon0_anim")        
+        
+        
