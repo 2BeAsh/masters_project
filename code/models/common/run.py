@@ -45,7 +45,7 @@ class RunWorkForce(MethodsWorkForce):
                 del group["s"]
                 del group["r"]
                 del group["went_bankrupt"]
-                del group["first_company_went_bankrupt"]
+                del group["went_bankrupt_idx"]
                 del group["mu"]
                 del group["mutations"]
                 
@@ -57,7 +57,7 @@ class RunWorkForce(MethodsWorkForce):
             # System
             group.create_dataset("r", data=self.r_hist)
             group.create_dataset("went_bankrupt", data=self.went_bankrupt_hist)
-            group.create_dataset("first_company_went_bankrupt", data=self.first_company_went_bankrupt_hist)
+            group.create_dataset("went_bankrupt_idx", data=self.went_bankrupt_idx_hist)
             group.create_dataset("mu", data=self.mu_hist)
             group.create_dataset("mutations", data=self.mutations_hist)
             # Attributes
