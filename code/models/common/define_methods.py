@@ -57,6 +57,8 @@ class MethodsWorkForce(WorkForce):
             self.func_bankrupt_salary = self._bankrupt_salary_worker_opinion
         elif self.mutation_method == "0_to_mean":
             self.func_bankrupt_salary = self._bankruptcy_salary_0_to_mean
+        elif self.mutation_method == "normal":
+            self.func_bankrupt_salary = self._bankruptcy_salary_normal
         else:
             print("Mutation magnitude must be `constant`, 'spread' or 'lastT', 'minimum', ")
     
@@ -375,9 +377,33 @@ class MethodsWorkForce(WorkForce):
         idx_surviving_companies = np.arange(self.N)[idx_not_bankrupt_with_positive_workers]
         
         if len(idx_surviving_companies) != 0:
-            mean_salary = np.mean(self.salary)
+            mean_salary = np.mean(self.salary[idx_surviving_companies])
             self.salary[bankrupt_idx] = np.random.uniform(0, mean_salary, size=self.went_bankrupt)
             # self.salary = np.maximum(self.salary, self.salary_min)
+        else:
+            self.salary = np.random.uniform(self.salary_min, np.max(self.salary), self.N)
+            self.mutations_arr = 0
+
+
+    def _bankruptcy_salary_normal(self, bankrupt_idx):
+        """New companies darw their salary from a normal distribution with mean and std of the surviving companies' salaries.
+
+        Args:
+            bankrupt_idx (_type_): _description_
+        """
+        idx_not_bankrupt = ~bankrupt_idx
+        idx_positive_workers = self.w > 0
+        idx_not_bankrupt_with_positive_workers = idx_not_bankrupt & idx_positive_workers
+        idx_surviving_companies = np.arange(self.N)[idx_not_bankrupt_with_positive_workers]
+        
+        if len(idx_surviving_companies) != 0:
+            new_salaries = np.random.choice(np.arange(self.N)[idx_surviving_companies], size=self.went_bankrupt, replace=True)
+            salary_living = self.salary[idx_surviving_companies]
+            mean_salary = np.mean(salary_living)
+            std_salary = np.std(salary_living)
+            mutations = np.random.normal(loc=0, scale=std_salary, size=self.went_bankrupt)
+            self.salary[bankrupt_idx] = new_salaries + mutations
+            self.salary = np.maximum(self.salary, self.salary_min)
         else:
             self.salary = np.random.uniform(self.salary_min, np.max(self.salary), self.N)
             self.mutations_arr = 0
