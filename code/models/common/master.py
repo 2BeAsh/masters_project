@@ -29,8 +29,8 @@ class WorkForce():
     def _initialize_market_variables(self):
         # Company variables
         self.w = np.ones(self.N, dtype=np.int32)
-        self.d = -self.mutation_magnitude * np.ones(self.N, dtype=np.float32)
-        self.salary = np.random.uniform(self.salary_min+self.mutation_magnitude, 5*self.mutation_magnitude, self.N)
+        self.d = -2 * np.ones(self.N, dtype=np.float32)
+        self.salary = np.random.uniform(self.mutation_magnitude, 3*self.mutation_magnitude, self.N)
         
         # Initial values
         if type(self.rf) == str:
@@ -41,8 +41,8 @@ class WorkForce():
         self.went_bankrupt = 0
         self.went_bankrupt_idx = np.zeros(self.N, dtype=np.bool)
         self.mutations_arr = 0
-        self.mu = np.mean(self.salary) * self.W
-        self.system_money_spent = self.mu
+        self.mu = self.mutation_magnitude * self.W / 2
+        self.system_money_spent = self.mu 
         self.T = self._time_scale()
     
     
