@@ -55,6 +55,8 @@ class MethodsWorkForce(WorkForce):
             self.func_bankrupt_salary = self._bankrupt_salary_mean
         elif self.mutation_method == "worker_opinion":
             self.func_bankrupt_salary = self._bankrupt_salary_worker_opinion
+        elif self.mutation_method == "0_to_mean":
+            self.func_bankrupt_salary = self._bankruptcy_salary_0_to_mean
         else:
             print("Mutation magnitude must be `constant`, 'spread' or 'lastT', 'minimum', ")
     
@@ -81,7 +83,10 @@ class MethodsWorkForce(WorkForce):
 
     def _transaction(self):
         # Pick the indices of the companies that will sell
-        idx_companies_selling = np.random.choice(np.arange(self.N), size=self.N, replace=True)
+        # Only w>0 companies perform transactions
+        number_of_companies_selling = np.sum(self.w > 0)
+        idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
+                
         # Find which companies that sells and how many times they do it
         idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
         # Find how much each of the chosen companies sell for and how much they pay in salary
@@ -93,7 +98,27 @@ class MethodsWorkForce(WorkForce):
         # Update values
         self.d[idx_unique] += salary_unique_all - sell_unique_all
         self.system_money_spent += salary_unique_all.sum()
+                
+
+    def _transaction_worker(self):
+        """Companies are chosen proportionally to their number of workers, and everyone pays salary regardless of making transactiosn
+        """
+        number_of_companies_selling = np.sum(self.w > 0)
+        probability_of_being_chosen = self.w[self.w>0] / self.w[self.w>0].sum()
+        idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True, p=probability_of_being_chosen)
         
+        # Find which companies that sells and how many times they do it
+        idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
+        # Find how much each of the chosen companies sell for and how much they pay in salary
+        sell_unique = self.w[idx_unique] * self.mu / self.W  
+        salary_unique = self.salary[idx_unique] * self.w[idx_unique]
+        # Multiply that by how many times they sold and paid salaries
+        sell_unique_all = sell_unique * counts
+        salary_unique_all = salary_unique * counts
+        # Update values
+        self.d[idx_unique] += salary_unique_all - sell_unique_all
+        self.system_money_spent += salary_unique_all.sum()
+
 
     def _pay_interest(self):   
         """Companies with positive debt pay interest rates
@@ -198,7 +223,7 @@ class MethodsWorkForce(WorkForce):
         self.went_bankrupt = self.went_bankrupt_idx.sum()
         # Reset values / create new companies
         self.w[self.went_bankrupt_idx] = 0
-        self.d[self.went_bankrupt_idx] = -self.mutation_magnitude
+        self.d[self.went_bankrupt_idx] = 0
         self.func_bankrupt_salary(self.went_bankrupt_idx)
         self.salary = np.maximum(self.salary, self.salary_min)
         
@@ -333,6 +358,26 @@ class MethodsWorkForce(WorkForce):
             self.mutations_arr = np.random.uniform(-mutation_magnitude, mutation_magnitude, size=self.went_bankrupt)
             self.salary[bankrupt_idx] = mean_salary + self.mutations_arr
             self.salary = np.maximum(self.salary, self.salary_min)
+        else:
+            self.salary = np.random.uniform(self.salary_min, np.max(self.salary), self.N)
+            self.mutations_arr = 0
+
+
+    def _bankruptcy_salary_0_to_mean(self, bankrupt_idx):
+        """New companies draw their salary from a uniform distribution between 0 and the mean salary of the surviving companies.
+
+        Args:
+            bankrupt_idx (_type_): _description_
+        """
+        idx_not_bankrupt = ~bankrupt_idx
+        idx_positive_workers = self.w > 0
+        idx_not_bankrupt_with_positive_workers = idx_not_bankrupt & idx_positive_workers
+        idx_surviving_companies = np.arange(self.N)[idx_not_bankrupt_with_positive_workers]
+        
+        if len(idx_surviving_companies) != 0:
+            mean_salary = np.mean(self.salary)
+            self.salary[bankrupt_idx] = np.random.uniform(0, mean_salary, size=self.went_bankrupt)
+            # self.salary = np.maximum(self.salary, self.salary_min)
         else:
             self.salary = np.random.uniform(self.salary_min, np.max(self.salary), self.N)
             self.mutations_arr = 0
