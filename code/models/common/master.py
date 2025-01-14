@@ -20,10 +20,10 @@ class WorkForce():
         np.random.seed(seed)
         
         self._initialize_market_variables()
-                
+        
         
     def _get_group_name(self):
-        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_wupdate{self.worker_update_method}_rf{self.rf_name}_ProbExpo{self.prob_exponent}"
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_wupdate{self.worker_update_method}_rf{self.rf_name}_ProbExpo{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}"
     
     
     def _initialize_market_variables(self):
@@ -86,6 +86,7 @@ class WorkForce():
         
 
     def _simulation(self):
+        print("s_min = ", self.salary_min)
         # Initialize variables and history arrays
         # self._initialize_market_variables()  # Moved to __init__
         self._initialize_history_arrays()

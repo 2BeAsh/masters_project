@@ -43,6 +43,7 @@ class RunWorkForce(MethodsWorkForce):
                 del group["w"]
                 del group["d"]
                 del group["s"]
+                
                 del group["r"]
                 del group["went_bankrupt"]
                 del group["went_bankrupt_idx"]
@@ -93,7 +94,44 @@ class RunWorkForce(MethodsWorkForce):
                 del data_group["repeated_m_runs"]
             data_group.create_dataset("repeated_m_runs", data=mean_salary_arr)
             data_group.attrs["m_repeated"] = m_values
+            
+
+    def multiple_s_min_runs(self, s_min_list):
+        self.group_name = self._get_group_name()
+        print(f"Storing multiple s_min runs in {self.group_name}")
+        s_arr = np.zeros((len(s_min_list), self.N, self.time_steps))
+        bankruptcy_arr = np.zeros((len(s_min_list), self.time_steps))
+        total_iterations = len(s_min_list)
+        s_min_current = self.salary_min
+        for i, s_min in enumerate(s_min_list):
+            print(f"iteration: {i+1}/{total_iterations}")
+            self.salary_min = s_min
+            self._simulation()
+            s_arr[i, :, :] = self.s_hist
+            bankruptcy = self.went_bankrupt_hist / self.N
+            bankruptcy_arr[i, :] = bankruptcy * 1
         
+        # Save data
+        with h5py.File(self.file_path, "a") as file:
+            try:
+                data_group = file[self.group_name]
+            except KeyError:
+                data_group = file.create_group(self.group_name)
+            if "s_s_min" in data_group:
+                del data_group["s_s_min"]
+            if "bankruptcy_s_min" in data_group:
+                del data_group["bankruptcy_s_min"]
+            if "s_min_list" in data_group.attrs:
+                del data_group.attrs["s_min_list"]
+            
+            data_group.create_dataset("s_s_min", data=s_arr)
+            data_group.create_dataset("bankruptcy_s_min", data=bankruptcy_arr)
+            data_group.attrs["s_min_list"] = s_min_list
+        
+        # Reset s_min
+        self.salary_min = s_min_current
+            
+
 
 number_of_companies = 10
 number_of_workers = 20

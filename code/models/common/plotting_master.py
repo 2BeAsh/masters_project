@@ -53,13 +53,16 @@ class PlotMaster(general_functions.PlotMethods):
                 "peak_idx": np.array(group.get("peak_idx", None)),
                 "repeated_m_runs": np.array(group.get("repeated_m_runs", None)),
                 "N": np.array(group.attrs.get("N", None)),
-                "time_steps": group.attrs.get("time_steps", None),
+                "time_steps": group.attrs.get("time_steps"),
                 "W": np.array(group.attrs.get("W", None)),
                 "ds": np.array(group.attrs.get("ds", None)),
                 "rf": np.array(group.attrs.get("rf", None)),
                 "m": np.array(group.attrs.get("m", None)),
                 "prob_expo": np.array(group.attrs.get("prob_expo", None)),
                 "m_repeated": np.array(group.attrs.get("m_repeated", None)),
+                "s_s_min": np.array(group.get("s_s_min", None)),
+                "bankruptcy_s_min": np.array(group.get("bankruptcy_s_min", None)),
+                "s_min_list": np.array(group.attrs.get("s_min_list", None)),
             }
             self.loaded_groups[gname] = data
     
@@ -88,16 +91,16 @@ class PlotMaster(general_functions.PlotMethods):
         self.peak_idx = data["peak_idx"]
         self.salary_repeated_m_runs = data["repeated_m_runs"]
         self.m_repeated = data["m_repeated"]
-        
+        self.s_s_min = data["s_s_min"]
+        self.bankruptcy_s_min = data["bankruptcy_s_min"]
+        self.s_min_list = data["s_min_list"]
+        self.time_values = np.arange(self.skip_values, self.time_steps)
+        print(self.skip_values, self.time_steps)
         if (self.s != None).all():
             self.xlim = (self.skip_values, self.time_steps)
-            
-            if self.time_steps <= self.skip_values:
-                self.skip_values = 0
-                print(f"Skip values {self.skip_values} is larger than the time steps {self.time_steps}. Set skip values to 0.")
+
     
-    
-    def plot_salary(self):
+    def plot_salary(self, show_spread=False):
         """Plot the mean salary and fraction who went bankrupt on twinx. Plot the spread (std/mean) on a subplot below it."""
         self._get_data(self.group_name)
         mean_salary = self.s.mean(axis=0)[self.skip_values:]
@@ -107,7 +110,11 @@ class PlotMaster(general_functions.PlotMethods):
         time_values = np.arange(self.skip_values, self.time_steps)
         
         # Create figure
-        fig, (ax0, ax1) = plt.subplots(nrows=2, figsize=(10, 10))
+        nrows = 1 if not show_spread else 2
+        fig, ax0 = plt.subplots(nrows=nrows, figsize=(10, 10))
+        
+        if show_spread:
+            ax0, ax1 = ax0
         
         # ax0 - Salary and fraction who went bankrupt
         c0 = self.colours["salary"]
@@ -115,7 +122,7 @@ class PlotMaster(general_functions.PlotMethods):
         
         # Bankruptcy
         ax0_twin = ax0.twinx()
-        ax0_twin.plot(time_values, fraction_bankrupt, color=c1, label="Fraction bankrupt", alpha=0.6)
+        ax0_twin.plot(time_values, fraction_bankrupt, color=c1, label="Fraction bankrupt", alpha=0.3)
         ax0_twin.set_ylabel("Fraction bankrupt", color=c1)
         ax0_twin.tick_params(axis='y', labelcolor=c1)
 
@@ -128,16 +135,17 @@ class PlotMaster(general_functions.PlotMethods):
         ax0.grid()
         self._add_legend(ax0, ncols=3, x=0.5, y=0.9)
         
-        # ax1 - Spread
-        ax1.plot(time_values, spread, label="Spread")
-        ax1.set(xlabel="Time", xlim=self.xlim, ylabel="Spread", title="Spread (std/mean)")
-        ax1.grid()
+        if show_spread:
+            # ax1 - Spread
+            ax1.plot(time_values, spread, label="Spread")
+            ax1.set(xlabel="Time", xlim=self.xlim, ylabel="Spread", title="Spread (std/mean)")
+            ax1.grid()
         
-        # Plot the peaks as vertical lines on ax0 and ax1
-        if np.any(self.peak_idx != None):
-            for peak in self.peak_idx:
-                ax0.axvline(x=peak, ls="--", c="grey", alpha=0.7)
-                ax1.axvline(x=peak, ls="--", c="grey", alpha=0.7)
+            # Plot the peaks as vertical lines on ax0 and ax1
+            if np.any(self.peak_idx != None):
+                for peak in self.peak_idx:
+                    ax0.axvline(x=peak, ls="--", c="grey", alpha=0.7)
+                    ax1.axvline(x=peak, ls="--", c="grey", alpha=0.7)
         
         self._text_save_show(fig, ax0, "salary", xtext=0.05, ytext=0.75, fontsize=6)
         
@@ -201,7 +209,7 @@ class PlotMaster(general_functions.PlotMethods):
         d_final = self.d[:, -1]
         
         # Create figure
-        fig, (ax, ax1, ax2) = plt.subplots(nrows=3)
+        fig, (ax, ax1) = plt.subplots(nrows=2, figsize=(10, 8))
         c0 = self.colours["debt"]
         c1 = self.colours["bankruptcy"]
         
@@ -211,7 +219,6 @@ class PlotMaster(general_functions.PlotMethods):
         ax.set_ylabel("Log Price", color=c0)
         ax.tick_params(axis='y', labelcolor=c0)
         ax.grid()
-        self._add_legend(ax, ncols=2, x=0.7, y=0.7, fontsize=6)
         
         ax_twin = ax.twinx()
         ax_twin.plot(time_values, fraction_bankrupt, color=c1, label="Fraction bankrupt", alpha=0.6)
@@ -233,15 +240,15 @@ class PlotMaster(general_functions.PlotMethods):
         ax1_twin.set_yscale("log")
         
         # ax2 - Debt distribution
-        Nbins = int(np.sqrt(self.N))
-        ax2.hist(d_final, bins=Nbins, color=c0)
-        ax2.set(title="Debt distribution at final time step", xlabel="Debt", ylabel="Counts", yscale="log")
-        ax2.grid()
+        # Nbins = int(np.sqrt(self.N))
+        # ax2.hist(d_final, bins=Nbins, color=c0)
+        # ax2.set(title="Debt distribution at final time step", xlabel="Debt", ylabel="Counts", yscale="log")
+        # ax2.grid()
         
         # Log scale hist requires only positive values
         # self._xlog_hist(d_final, fig, ax2, xlabel="Log Debt", ylabel="Counts", title="Debt distribution at final time step")
         
-        self._text_save_show(fig, ax, "debt", xtext=0.05, ytext=0.85)
+        self._text_save_show(fig, ax, "debt", xtext=0.05, ytext=0.85, fontsize=6)
         
         
     def plot_collective(self):
@@ -435,8 +442,59 @@ class PlotMaster(general_functions.PlotMethods):
         # save show
         self._save_fig(fig, "multiple_prob_expo")
         plt.show()
+
+
+    def plot_multiple_s_min(self):
+        """Plot the mean salary for minimum salary values
+        """       
+        # Load data
+        self._get_data(self.group_name)
+
+        # Check if the data exists
+        if np.any(self.s_s_min == None):
+            raise ValueError("No data found for multiple s_min runs.")
+
+        s_all = self.s_s_min[:, :, self.skip_values:]  # Remove skip values
+        bankruptcy = self.bankruptcy_s_min[:, self.skip_values:]
+        # Calculate mean and median salary
+        s_mean = np.mean(s_all, axis=1)
+        s_median = np.median(s_all, axis=1)
+        # Create figure
+        # Calculate nrows and ncols
+        nrows = 2
+        ncols = (len(self.s_min_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(18, 12))
         
+        for i, (mean_salary, s_min, p_bank) in enumerate(zip(s_mean, self.s_min_list, bankruptcy)):
+            ax = axs[i//ncols, i%ncols]
+            
+            twin_x = ax.twinx()
+            twin_x.plot(self.time_values, p_bank, c=self.colours["bankruptcy"], label="Fraction bankrupt", alpha=0.25)
+            twin_x.tick_params(axis='y', labelcolor=self.colours["bankruptcy"])
+            
+            ax.plot(self.time_values, mean_salary, c=self.colours["salary"])
+            # ax.plot(self.time_values, median_salary, c="k", ls="dotted", alpha=0.75)
+            ax.tick_params(axis='y', labelcolor=self.colours["salary"])
+            
+            title = r"$s_\text{min} = $" + f"{s_min:.0e}"
+            ax.set_title(title, fontsize=8)
+            ax.set(yscale="log")
+            ax.grid()
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Log Price")
         
+        fig.suptitle(fr"Salary for different minimum salary values, $m={self.m}$")
+        
+        # save show
+        self._save_fig(fig, "multiple_s_min")
+        plt.show()
+        
+
     def plot_salary_and_debt_distributions(self):
         """Plot the salary and debt distributions at the final time step
         """

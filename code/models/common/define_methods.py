@@ -16,7 +16,6 @@ class MethodsWorkForce(WorkForce):
         self.worker_update_method = update_methods["worker_update"]
         self.bankruptcy_method = update_methods["bankruptcy"]
         self.mutation_method = update_methods["mutation"]
-        
         super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, time_steps, seed)
         
         # Initial values and choice of methods
@@ -59,6 +58,8 @@ class MethodsWorkForce(WorkForce):
             self.func_bankrupt_salary = self._bankruptcy_salary_0_to_mean
         elif self.mutation_method == "normal":
             self.func_bankrupt_salary = self._bankruptcy_salary_normal
+        elif self.mutation_method == "positive_income":
+            self.func_bankrupt_salary = self._bankruptcy_salary_positive_income
         else:
             print("Mutation magnitude must be `constant`, 'spread' or 'lastT', 'minimum', ")
     
@@ -105,21 +106,25 @@ class MethodsWorkForce(WorkForce):
     def _transaction_worker(self):
         """Companies are chosen proportionally to their number of workers, and everyone pays salary regardless of making transactiosn
         """
-        number_of_companies_selling = np.sum(self.w > 0)
-        probability_of_being_chosen = self.w[self.w>0] / self.w[self.w>0].sum()
-        idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True, p=probability_of_being_chosen)
+        # Loop over the number of workers and at each iteration choose a company to sell
         
-        # Find which companies that sells and how many times they do it
-        idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
-        # Find how much each of the chosen companies sell for and how much they pay in salary
-        sell_unique = self.w[idx_unique] * self.mu / self.W  
-        salary_unique = self.salary[idx_unique] * self.w[idx_unique]
-        # Multiply that by how many times they sold and paid salaries
-        sell_unique_all = sell_unique * counts
-        salary_unique_all = salary_unique * counts
+        # for _ in range(self.W):
+        #     # Pick company proportional to number of workers
+        #     prob_choose = self.w / self.W
+        #     idx_company = np.random.choice(np.arange(self.N), p=prob_choose)
+        #     # Update values
+        #     self.d[idx_company] -= self.mu / self.W + self.salary[idx_company]
+        #     self.system_money_spent += self.salary[idx_company]
+
+        # Alternative method drawing all companies at once and then using unique to update
+        idx_company = np.random.choice(np.arange(self.N)[self.w>0], size=self.W, replace=True, p = self.w[self.w>0] / self.w[self.w>0].sum())  # Indices of companies who had an employee chosen to do work
+        idx_unique, number_of_workers = np.unique(idx_company, return_counts=True)
+        # Find sell and salary values
+        sell_unique = number_of_workers * self.mu / self.W
+        salary_unique = self.salary[idx_unique] * number_of_workers
         # Update values
-        self.d[idx_unique] += salary_unique_all - sell_unique_all
-        self.system_money_spent += salary_unique_all.sum()
+        self.d[idx_unique] += salary_unique - sell_unique
+        self.system_money_spent += salary_unique.sum()
 
 
     def _pay_interest(self):   
@@ -407,7 +412,35 @@ class MethodsWorkForce(WorkForce):
         else:
             self.salary = np.random.uniform(self.salary_min, np.max(self.salary), self.N)
             self.mutations_arr = 0
+            
+            
+    def _bankruptcy_salary_positive_income(self, bankrupt_idx):
+        """New companies get their salary from comapnies who made a profit. If no companies made a profit, they draw from the top 50% of companies with w>0 who lost the least.
 
+        Args:
+            bankrupt_idx (_type_): _description_
+        """
+        # Find the companies that made a profit and did not go bankrupt this time step
+        idx_not_bankrupt = ~bankrupt_idx
+        positive_workers = self.w > 0
+        legal_company = idx_not_bankrupt & positive_workers
+        profit = self.d - self.d_hist[:, self.current_time - 1]
+        idx_made_a_profit = profit < 0 & legal_company
+        N_made_a_profit = idx_made_a_profit.sum()
+                
+        # Draw from the companies that made a profit
+        if N_made_a_profit > 0:
+            idx_new_salary = np.random.choice(np.arange(self.N)[idx_made_a_profit], size=self.went_bankrupt, replace=True)
+        
+        # If no companies made a profit, draw from the top 25% who lost the least
+        else:
+            idx_sorted = np.argsort(profit)
+            idx_top_50p = idx_sorted[:int(self.N / 2)]  # Goes from low to high, and want the profit to be a large negative number
+            idx_new_salary = np.random.choice(idx_top_50p, size=self.went_bankrupt, replace=True)
+
+        mutations = np.random.uniform(-self.mutation_magnitude, self.mutation_magnitude, size=self.went_bankrupt)
+        self.salary[bankrupt_idx] = self.salary[idx_new_salary] + mutations
+            
 
     def _update_rf(self):
         """The interest rate is updated based on the percent change in mu.
