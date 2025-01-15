@@ -4,8 +4,32 @@ import h5py
 from define_methods import MethodsWorkForce
 
 
+# Local paths for saving files
+path_to_file = Path(__file__)
+dir_path = path_to_file.parent.parent.parent
+dir_path_output = Path.joinpath(dir_path, "output")
+dir_path_image = Path.joinpath(dir_path, "images", "common")
+dir_path_image.mkdir(parents=True, exist_ok=True)
+# File name and path
+file_name = "common.h5"
+file_path = dir_path_output / file_name
+
+
 class RunWorkForce(MethodsWorkForce):
     def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, update_methods, time_steps, seed):
+        """Functions for running the simulation and storing the data.
+
+        Args:
+            number_of_companies (_type_): _description_
+            number_of_workers (_type_): _description_
+            salary_increase (_type_): _description_
+            interest_rate_free (_type_): _description_
+            mutation_magnitude (_type_): _description_
+            prob_exponent (_type_): _description_
+            update_methods (_type_): _description_
+            time_steps (_type_): _description_
+            seed (_type_): _description_
+        """
         # Inherit from MethodsWorkForce which inherits from WorkForce
         self.worker_update_method = update_methods["worker_update"]
         self.prob_exponent = prob_exponent
@@ -14,15 +38,6 @@ class RunWorkForce(MethodsWorkForce):
         self.rf_name = interest_rate_free
         
         super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, update_methods, time_steps, seed)
-        # Local paths for saving files
-        file_path = Path(__file__)
-        self.dir_path = file_path.parent.parent.parent
-        self.dir_path_output = Path.joinpath(self.dir_path, "output")
-        self.dir_path_image = Path.joinpath(self.dir_path, "images", "common")
-        self.dir_path_image.mkdir(parents=True, exist_ok=True)
-        # File name and path
-        file_name = "common.h5"
-        self.file_path = self.dir_path_output / file_name
 
 
     def store_data_in_group(self):
@@ -31,7 +46,7 @@ class RunWorkForce(MethodsWorkForce):
         print(f"Storing data in {self.group_name}")
         self._simulation()
                 
-        with h5py.File(self.file_path, "a") as file:
+        with h5py.File(file_path, "a") as file:
             # Try and open the file if it already exists
             try:
                 group = file[self.group_name]
@@ -85,7 +100,7 @@ class RunWorkForce(MethodsWorkForce):
                 mean_salary_arr[i, j, :] = mean_salary
                 
         # Save data            
-        with h5py.File(self.file_path, "a") as file:
+        with h5py.File(file_path, "a") as file:
             try:
                 data_group = file[self.group_name]
             except KeyError:
@@ -112,7 +127,7 @@ class RunWorkForce(MethodsWorkForce):
             bankruptcy_arr[i, :] = bankruptcy * 1
         
         # Save data
-        with h5py.File(self.file_path, "a") as file:
+        with h5py.File(file_path, "a") as file:
             try:
                 data_group = file[self.group_name]
             except KeyError:
@@ -131,24 +146,21 @@ class RunWorkForce(MethodsWorkForce):
         # Reset s_min
         self.salary_min = s_min_current
             
-
-
-number_of_companies = 10
-number_of_workers = 20
-salary_increase = 0.075
-interest_rate_free = 0.05
-mutation_magnitude = 0.01  # float, "spread" or "lastT"
-prob_exponent = 1
-update_methods = {"worker_update": "unlimited", 
-                  "bankruptcy": "cannot_pay_salary",
-                  "mutation": "constant"}
-time_steps = 10_000
-seed = 42
-run = RunWorkForce(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, update_methods, time_steps, seed)
-file_path = run.file_path
-group_name = run.group_name
-dir_path_image = run.dir_path_image
-
+            
 if __name__ == "__main__":
+    number_of_companies = 10
+    number_of_workers = 20
+    salary_increase = 0.075
+    interest_rate_free = 0.05
+    mutation_magnitude = 0.01  # float, "spread" or "lastT"
+    prob_exponent = 1
+    update_methods = {"worker_update": "unlimited", 
+                    "bankruptcy": "cannot_pay_salary",
+                    "mutation": "constant"}
+    time_steps = 10_000
+    seed = 42
+    run = RunWorkForce(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, update_methods, time_steps, seed)
+    group_name = run.group_name
+
     run.store_data_in_group()
     print("Finished storing data")

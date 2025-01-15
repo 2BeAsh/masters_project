@@ -3,14 +3,15 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import functools
 import numpy as np
-import h5py
-from pathlib import Path
-from run import file_path, group_name, dir_path_image
+from run import dir_path_image
+from postprocess import PostProcess
 
 
-class PlotMaster(general_functions.PlotMethods):
+class PlotMaster(general_functions.PlotMethods, PostProcess):
     def __init__(self, data_group_name, skip_values=0, show_plots=True, add_parameter_text_to_plot=True, save_figure=True):
-        super().__init__(data_group_name)
+        general_functions.PlotMethods.__init__(self, data_group_name)
+        PostProcess.__init__(self, data_group_name)
+        
         # Allow for the option of specifying a group name. Otherwise the existing group name is used.
         self.group_name = data_group_name
         self.show_plots = show_plots
@@ -37,64 +38,19 @@ class PlotMaster(general_functions.PlotMethods):
             "bankruptcy": "red",
         }
     
-        
-    def _load_data_group(self, gname):
-        with h5py.File(file_path, "r") as f:
-            group = f[gname]
-            data = {
-                "w": np.array(group.get("w", None)),
-                "d": np.array(group.get("d", None)),
-                "s": np.array(group.get("s", None)),
-                "r": np.array(group.get("r", None)),
-                "went_bankrupt": np.array(group.get("went_bankrupt", None)),
-                "went_bankrupt_idx": np.array(group.get("went_bankrupt_idx", None)),
-                "mu": np.array(group.get("mu", None)),
-                "mutations": np.array(group.get("mutations", None)),
-                "peak_idx": np.array(group.get("peak_idx", None)),
-                "repeated_m_runs": np.array(group.get("repeated_m_runs", None)),
-                "N": np.array(group.attrs.get("N", None)),
-                "time_steps": group.attrs.get("time_steps"),
-                "W": np.array(group.attrs.get("W", None)),
-                "ds": np.array(group.attrs.get("ds", None)),
-                "rf": np.array(group.attrs.get("rf", None)),
-                "m": np.array(group.attrs.get("m", None)),
-                "prob_expo": np.array(group.attrs.get("prob_expo", None)),
-                "m_repeated": np.array(group.attrs.get("m_repeated", None)),
-                "s_s_min": np.array(group.get("s_s_min", None)),
-                "bankruptcy_s_min": np.array(group.get("bankruptcy_s_min", None)),
-                "s_min_list": np.array(group.attrs.get("s_min_list", None)),
-            }
-            self.loaded_groups[gname] = data
-    
     
     def _get_data(self, gname):
-        """Load data from gname if it has not already been loaded."""
-        if gname not in self.loaded_groups:
-            self._load_data_group(gname)
-        # Set the attributes from the loaded data
-        data = self.loaded_groups[gname]
-        self.w = data["w"]
-        self.d = data["d"]
-        self.s = data["s"]
-        self.r = data["r"]
-        self.went_bankrupt = data["went_bankrupt"]
-        self.went_bankrupt_idx = data["went_bankrupt_idx"]
-        self.mu = data["mu"]
-        self.mutations = data["mutations"]
-        self.N = data["N"]
-        self.time_steps = data["time_steps"]
-        self.W = data["W"]
-        self.ds = data["ds"]
-        self.rf = data["rf"]
-        self.m = data["m"]
-        self.prob_expo = data["prob_expo"]
-        self.peak_idx = data["peak_idx"]
-        self.salary_repeated_m_runs = data["repeated_m_runs"]
-        self.m_repeated = data["m_repeated"]
-        self.s_s_min = data["s_s_min"]
-        self.bankruptcy_s_min = data["bankruptcy_s_min"]
-        self.s_min_list = data["s_min_list"]
+        """Redefine the _get_data method from PostProcess to include the xlim attribute.
+
+        Args:
+            gname (_type_): _description_
+        """
+        # Get the parent's method
+        super()._get_data(gname)
+        
+        # Add extra for this class
         self.time_values = np.arange(self.skip_values, self.time_steps)
+        
         print(self.skip_values, self.time_steps)
         if (self.s != None).all():
             self.xlim = (self.skip_values, self.time_steps)
@@ -162,7 +118,7 @@ class PlotMaster(general_functions.PlotMethods):
         time_values = np.arange(self.skip_values, self.time_steps)
                 
         # Create figure
-        fig, (ax_s, ax_d, ax_w) = plt.subplots(nrows=3)
+        fig, (ax_s, ax_d, ax_w) = plt.subplots(nrows=3, figsize=(10, 8))
         
         # ax_s - salary
         ylim = (np.median(s) / 4, np.max(s)*1.01)
