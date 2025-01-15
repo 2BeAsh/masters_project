@@ -36,6 +36,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             "workers": general_functions.list_of_colors[3],
             "mutations": general_functions.list_of_colors[4],
             "bankruptcy": "red",
+            "time": general_functions.list_of_colors[5],
         }
     
     
@@ -665,7 +666,24 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Text, save, show
         self._text_save_show(fig, ax, "bankrupt_new_salary", fontsize=6)
+
+    
+    def plot_time_from_income_change_to_bankruptcy(self):
+        # Get data
+        diff_vals = self.time_from_negative_income_to_bankruptcy(self.skip_values)
         
+        # Bin it
+        Nbins = int(np.sqrt(len(diff_vals)))
+        
+        # Create figure
+        fig, ax = plt.subplots()
+        ax.hist(diff_vals, bins=Nbins, color=self.colours["time"])      
+        ax.set(xlabel="Time", ylabel="Counts", title="Time from income change to bankruptcy")  
+        ax.grid()
+        
+        # Text, save, show
+        self._text_save_show(fig, ax, "time_from_income_change_to_bankruptcy", xtext=0.05, ytext=0.85, fontsize=6)
+
 
     def animate_w0_wnon0(self, skip_time_steps=0):
         """Make a histogram animation of the salary distribution of companies with w=0 at each time step together with the salary picked of bankrupt companies, and another with w>0
