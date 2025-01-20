@@ -1,9 +1,11 @@
 import numpy as np
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, savgol_filter
 from scipy.ndimage import uniform_filter1d
+import scipy.special as special
 import matplotlib.pyplot as plt
 import h5py
 from run import file_path
+import general_functions
 
 
 class PostProcess:
@@ -87,7 +89,8 @@ class PostProcess:
         
         for i in range(self.N):            
             # Get the mean and std of the time from bottom to peak
-            time_from_bottom_to_peak = self._get_peak_diff(i, skip_values)
+            bot_times, top_times = self._get_peak_pairs(i, skip_values)
+            time_from_bottom_to_peak = top_times - bot_times
             
             # Store values
             time_diff_arr[i] = time_from_bottom_to_peak
@@ -95,19 +98,21 @@ class PostProcess:
         return np.concatenate(time_diff_arr)
             
             
-    def _get_peak_diff(self, idx, skip_values):
+    def _get_peak_pairs(self, idx, skip_values, show_plot=False):
         d_skipped = self.d[idx, skip_values:]
         bot_height = np.abs(np.min(d_skipped) * 0.25)
-        bottom_idx, _ = find_peaks(-d_skipped, height=bot_height, distance=50, prominence=bot_height, width=50, )  # Maybe play around with plateau size?
+        bottom_idx, _ = find_peaks(-d_skipped, height=bot_height, distance=30, prominence=bot_height, width=25)  # Maybe play around with plateau size?
         top_idx = np.where(self.went_bankrupt_idx[idx, skip_values:]==1)[0]
         
-        # plt.figure()
-        # plt.plot(np.arange(skip_values, self.time_steps), d_skipped)
-        
+        if show_plot:
+            plt.figure()
+            plt.plot(np.arange(skip_values, self.time_steps), d_skipped, color="firebrick")
+            
         # Check if there is any peaks
         if len(bottom_idx) == 0 or len(top_idx) == 0:
-            # plt.show()
-            # plt.close()
+            if show_plot:
+                plt.show()
+                plt.close()
             return np.array([])
         
         # Need to make sure that bottom and top are equal in length
@@ -153,11 +158,130 @@ class PostProcess:
         top_idx = top_idx[:len(bottom_idx)]
         bottom_idx = bottom_idx[:len(top_idx)]
 
-        # plt.plot(np.array(bottom_idx)+skip_values, d_skipped[bottom_idx], "o", color="green", markersize=5)
-        # plt.plot(np.array(top_idx)+skip_values, d_skipped[top_idx], "o", color="red", markersize=5)
-        # plt.show()
-        # plt.close()
+        if show_plot:
+            plt.plot(np.array(bottom_idx)+skip_values, d_skipped[bottom_idx], "o", color="green", markersize=5)
+            plt.plot(np.array(top_idx)+skip_values, d_skipped[top_idx], "o", color="red", markersize=5)
+            plt.axvline(x=5360, ls="dashed", color="grey")
+            plt.axvline(x=5600, ls="dashed", color="grey")
+            plt.axvline(x=5840, ls="dashed", color="grey")
+            plt.xlabel("Time")
+            plt.ylabel("Debt")
+            plt.grid()
+            plt.title("Debt first minima and bankruptcy")
+            plt.show()
+            plt.close()
                     
-        return np.array(top_idx) - bottom_idx
+        return bottom_idx, np.array(top_idx)
                 
+        
+    def time_diff_llh_minimize(self, skip_values):
+        diff_vals = self.time_from_negative_income_to_bankruptcy(skip_values)
+
+        def _double_gaussian_pdf(x, mu1, sigma1, mu2, sigma2, p):
+            # Ensure only positive values
+            x = x[x > 0]
+
+            gauss1 = p * 1 / (sigma1 * np.sqrt(2 * np.pi)) * np.exp(-1/2 * (x - mu1)**2 / sigma1**2) 
+            gauss2 = (1 - p) * 1 / (sigma2 * np.sqrt(2 * np.pi)) * np.exp(-1/2 * (x - mu2)**2 / sigma2**2)
+            return gauss1 + gauss2
+        
+        
+        def _double_log_normal_pdf(x, mu1, sigma1, mu2, sigma2, p):
+            # Ensure only positive values
+            x = x[x > 0]
             
+            lognorm1 = p * (1 / (x * sigma1 * np.sqrt(2 * np.pi))) * np.exp(- (np.log(x) - mu1)**2 / (2 * sigma1**2))
+            lognorm2 = (1 - p) * (1 / (x * sigma2 * np.sqrt(2 * np.pi))) * np.exp(- (np.log(x) - mu2)**2 / (2 * sigma2**2))
+            return lognorm1 + lognorm2
+        
+        
+        def _double_gamma_pdf(x, a1, b1, a2, b2, p):
+            # Ensure only positive values
+            x = x[x > 0]
+
+            gamma1 = p * (b1**a1 / special.gamma(a1)) * x**(a1 - 1) * np.exp(-b1 * x)
+            gamma2 = (1 - p) * (b2**a2 / special.gamma(a2)) * x**(a2 - 1) * np.exp(-b2 * x)
+            return gamma1 + gamma2
+        
+        
+        # Estimate initial values and perform minimization
+        p0_list = [25., 14., 150, 25, 0.2]
+        par, _ = general_functions.minimize_llh(_double_gaussian_pdf, diff_vals, p0=p0_list)
+        
+        p0_list_lognorm = [0, 1/2, 2, 1/2, 0.4]
+        par_lognorm, _ = general_functions.minimize_llh(_double_log_normal_pdf, diff_vals, p0=p0_list_lognorm)
+        
+        p0_list_gamma = [2, 2, 8, 1, 0.4]
+        par_gamma, _ = general_functions.minimize_llh(_double_gamma_pdf, diff_vals, p0=p0_list_gamma)        
+        
+        # Calculate x and y values for plotting
+        x_values = np.linspace(np.min(diff_vals), np.max(diff_vals), 500)
+        y_norm = _double_gaussian_pdf(x_values, *par)
+        y_lognorm = _double_log_normal_pdf(x_values, *par_lognorm)
+        y_gamma = _double_gamma_pdf(x_values, *par_gamma)
+        
+        # Print the fitted values for double Gaussian
+        mu1, sigma1, mu2, sigma2, p = par
+        print(f"Double Gaussian: mu1 = {mu1:.2f}, sigma1 = {sigma1:.2f}, mu2 = {mu2:.2f}, sigma2 = {sigma2:.2f}, p = {p:.2f}")
+        
+        # Print the fitted values for double log normal
+        mu1_ln, sigma1_ln, mu2_ln, sigma2_ln, p_ln = par_lognorm
+        print(f"Double Log Normal: mu1 = {mu1_ln:.2f}, sigma1 = {sigma1_ln:.2f}, mu2 = {mu2_ln:.2f}, sigma2 = {sigma2_ln:.2f}, p = {p_ln:.2f}")
+        
+        # Print the fitted values for double gamma
+        a1, b1, a2, b2, p_gamma = par_gamma
+        print(f"Double Gamma: a1 = {a1:.2f}, b1 = {b1:.2f}, a2 = {a2:.2f}, b2 = {b2:.2f}, p = {p_gamma:.2f}")
+        
+        return par, x_values, y_norm, y_lognorm, y_gamma, diff_vals
+    
+    
+    def _survive_bust_single(self, time_interval):
+        # Skip time
+        went_bankrupt_idx_over_peak = self.went_bankrupt_idx[:, time_interval[0] : time_interval[1]]
+        
+        # Find the number of times each company goes bankrupt over that period
+        company_goes_bankrupt_over_peak = np.count_nonzero(went_bankrupt_idx_over_peak==1, axis=1) 
+        # Count the number of companies with 0 bankruptcies
+        survive = np.count_nonzero(company_goes_bankrupt_over_peak==0)
+        return survive
+        
+    
+    def survive_bust_distribution(self, show_peak_plot):
+        """The number of companies that do not go bankrupt from the bottom of one peak to the next.
+        """
+        # Load data
+        self._get_data(self.group_name)
+                
+        # Smooth the mean salary data, then find the minus peaks
+        s_skip = self.s[:, self.skip_values:]
+        mean_s = np.mean(s_skip, axis=0)
+        smooth_s = savgol_filter(mean_s, 51, 3)
+        height_and_prominence = np.min(-smooth_s) / 2
+        peaks, _ = find_peaks(-smooth_s, height=height_and_prominence, prominence=height_and_prominence, distance=15, width=10)
+        
+        if show_peak_plot:
+            fig, ax = plt.subplots()
+            t = np.arange(self.skip_values, self.time_steps)   
+            ax.plot(t, -mean_s, label="Mean salary")
+            ax.plot(t, -smooth_s, label="Smoothed mean salary")
+            ax.plot(peaks+self.skip_values, -smooth_s[peaks], "x", markersize=10, label="Peaks")
+            ax.set(xlabel="Time", ylabel="Salary", title="Negative mean salary smoothed peaks")
+            ax.legend()
+            ax.grid()
+            plt.show()
+            plt.close()
+        
+        
+        # Loop over peaks to find the number of companies that survive from one peak to the next
+        number_of_peaks = len(peaks)
+        if number_of_peaks <= 1:
+            print("No peaks found")
+            return np.array([])
+        else:
+            survive_arr = np.zeros(number_of_peaks-1)
+            for i in range(number_of_peaks-1):
+                survive_arr[i] = self._survive_bust_single([peaks[i], peaks[i+1]])
+            
+        return survive_arr
+        
+        
