@@ -3,7 +3,7 @@ from master import WorkForce
 
 
 class MethodsWorkForce(WorkForce):
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, update_methods: dict, time_steps, seed):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods: dict, time_steps, seed):
         """Must define the following methods for master to work:
             _transaction()
             _pay_interest()
@@ -16,7 +16,7 @@ class MethodsWorkForce(WorkForce):
         self.worker_update_method = update_methods["worker_update"]
         self.bankruptcy_method = update_methods["bankruptcy"]
         self.mutation_method = update_methods["mutation"]
-        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, time_steps, seed)
+        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, time_steps, seed)
         
         # Initial values and choice of methods
         self._pick_functions()
@@ -87,9 +87,11 @@ class MethodsWorkForce(WorkForce):
     def _transaction(self):
         # Pick the indices of the companies that will sell
         # Only w>0 companies perform transactions
-        number_of_companies_selling = np.sum(self.w > 0)
-        idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
-                
+        # number_of_companies_selling = np.sum(self.w > 0)
+        # idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
+        
+        idx_companies_selling = np.random.choice(np.arange(self.N), size=self.N, replace=True)
+                        
         # Find which companies that sells and how many times they do it
         idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
         # Find how much each of the chosen companies sell for and how much they pay in salary

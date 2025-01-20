@@ -16,7 +16,7 @@ file_path = dir_path_output / file_name
 
 
 class RunWorkForce(MethodsWorkForce):
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, update_methods, time_steps, seed):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, salary_min, update_methods, time_steps, seed):
         """Functions for running the simulation and storing the data.
 
         Args:
@@ -37,7 +37,7 @@ class RunWorkForce(MethodsWorkForce):
             number_of_workers = number_of_companies
         self.rf_name = interest_rate_free
         
-        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, update_methods, time_steps, seed)
+        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods, time_steps, seed)
 
 
     def store_data_in_group(self):
@@ -112,6 +112,11 @@ class RunWorkForce(MethodsWorkForce):
             
 
     def multiple_s_min_runs(self, s_min_list):
+        """Generate data for different s_min values.
+
+        Args:
+            s_min_list (list): _description_
+        """
         self.group_name = self._get_group_name()
         print(f"Storing multiple s_min runs in {self.group_name}")
         s_arr = np.zeros((len(s_min_list), self.N, self.time_steps))
@@ -145,7 +150,48 @@ class RunWorkForce(MethodsWorkForce):
         
         # Reset s_min
         self.salary_min = s_min_current
+
+
+    def multiple_ds_runs(self, ds_list):
+        """Generate data for different ds values.
+
+        Args:
+            ds_list (list): _description_
+        """
+        self.group_name = self._get_group_name()
+        self._simulation()
+        print(f"Storing multiple ds runs in {self.group_name}")
+        s_arr = np.zeros((len(ds_list), self.N, self.time_steps))
+        bankruptcy_arr = np.zeros((len(ds_list), self.time_steps))
+        total_iterations = len(ds_list)
+        ds_current = self.ds
+        for i, ds in enumerate(ds_list):
+            print(f"iteration: {i+1}/{total_iterations}")
+            self.ds = ds
+            self._simulation()
+            s_arr[i, :, :] = self.s_hist
+            bankruptcy = self.went_bankrupt_hist / self.N
+            bankruptcy_arr[i, :] = bankruptcy * 1
+        
+        # Save data
+        with h5py.File(file_path, "a") as file:
+            try:
+                data_group = file[self.group_name]
+            except KeyError:
+                data_group = file.create_group(self.group_name)
+            if "s_ds" in data_group:
+                del data_group["s_ds"]
+            if "bankruptcy_ds" in data_group:
+                del data_group["bankruptcy_ds"]
+            if "ds_list" in data_group.attrs:
+                del data_group.attrs["ds_list"]
             
+            data_group.create_dataset("s_ds", data=s_arr)
+            data_group.create_dataset("bankruptcy_ds", data=bankruptcy_arr)
+            data_group.attrs["ds_list"] = ds_list
+        
+        # Reset s_min
+        self.ds = ds_current
             
 if __name__ == "__main__":
     number_of_companies = 10
