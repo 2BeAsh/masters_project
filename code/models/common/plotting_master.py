@@ -49,10 +49,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # Get the parent's method
         super()._get_data(gname)
         
-        # Add extra for this class
-        self.time_values = np.arange(self.skip_values, self.time_steps)
         
-        print(self.skip_values, self.time_steps)
         if (self.s != None).all():
             self.xlim = (self.skip_values, self.time_steps)
 
@@ -86,11 +83,11 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # Mean and median salary
         ax0.plot(time_values, mean_salary, label="Mean salary", c=c0, alpha=1)
         ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.7, ls="dotted")
-        ax0.set(xlim=self.xlim, ylabel="Log Price", yscale="log", title="Mean salary and bankruptcies")
+        ax0.set(xlim=self.xlim, ylabel="Log Price", yscale="linear", title="Mean salary and bankruptcies")
         ax0.set_ylabel("Log Price", color=c0)
         ax0.tick_params(axis='y', labelcolor=c0)
         ax0.grid()
-        self._add_legend(ax0, ncols=3, x=0.5, y=0.9)
+        self._add_legend(ax0, ncols=3, x=0.5, y=0.95)
         
         if show_spread:
             # ax1 - Spread
@@ -104,7 +101,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
                     ax0.axvline(x=peak, ls="--", c="grey", alpha=0.7)
                     ax1.axvline(x=peak, ls="--", c="grey", alpha=0.7)
         
-        self._text_save_show(fig, ax0, "salary", xtext=0.05, ytext=0.75, fontsize=6)
+        self._text_save_show(fig, ax0, "salary", xtext=0.05, ytext=0.95, fontsize=6)
         
         
     def plot_single_companies(self, N_plot):
@@ -122,7 +119,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         fig, (ax_s, ax_d, ax_w) = plt.subplots(nrows=3, figsize=(10, 8))
         
         # ax_s - salary
-        ylim = (np.median(s) / 4, np.max(s)*1.01)
+        ylim = (0.99e-2, np.max(s)*1.01)
         ax_s.plot(time_values, s.T)
         ax_s.set(title=f"Salary and debt of first {N_plot} companies", yscale="log", ylim=ylim)
         ax_s.set_ylabel("Log salary")
@@ -158,6 +155,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         """
         # Preprocess
         self._get_data(self.group_name)
+        self.d = -self.d
         mean_debt = self.d.mean(axis=0)[self.skip_values:]
         median_debt = np.median(self.d, axis=0)[self.skip_values:]
         mean_salary = self.s.mean(axis=0)[self.skip_values:]
@@ -172,8 +170,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         ax.plot(time_values, mean_debt, c=c0, label="Mean debt")
         # ax.plot(time_values, median_debt, c=c0, ls="--", label="Median debt")
-        ax.set(xlabel="Time", title="Mean debt and bankruptcies", yscale="symlog")
-        ax.set_ylabel("Log Price", color=c0)
+        ax.set(xlabel="Time", title="Mean debt and bankruptcies", yscale="linear")
+        ax.set_ylabel("Price", color=c0)
         ax.tick_params(axis='y', labelcolor=c0)
         ax.grid()
         
@@ -185,7 +183,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # ax1 - Salary and debt
         c2 = self.colours["salary"]
         ax1.plot(time_values, mean_debt, c=c0)
-        ax1.set(xlabel="Time", title="Mean salary and debt", yscale="symlog")
+        ax1.set(xlabel="Time", title="Mean salary and debt", yscale="linear")
         ax1.set_ylabel("Mean Debt", color=c0)
         ax1.tick_params(axis='y', labelcolor=c0)
         ax1.grid()
@@ -194,7 +192,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax1_twin.plot(time_values, mean_salary, c=c2, alpha=0.7)
         ax1_twin.set_ylabel("Log mean salary", color=c2)
         ax1_twin.tick_params(axis='y', labelcolor=c2)
-        ax1_twin.set_yscale("log")
+        ax1_twin.set_yscale("linear")
         
         # ax2 - Debt distribution
         # Nbins = int(np.sqrt(self.N))
@@ -356,8 +354,9 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax.grid()
         
         self._add_legend(ax, ncols=2, y=0.9)
-        self._save_fig(fig, "repeated_mutation_size")
-        plt.show()
+        
+        # Text, save show
+        self._text_save_show(fig, ax, "repeated_mutation_size", xtext=0.05, ytext=0.75, fontsize=6)
             
         
     def plot_multiple_prob_expo(self, group_name_list):
@@ -396,9 +395,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             if subplot_spec.is_first_col():
                 ax.set_ylabel("Log Price")
         
-        # save show
-        self._save_fig(fig, "multiple_prob_expo")
-        plt.show()
+        # Text, save show,
+        self._text_save_show(fig, axs[0, 0], "multiple_prob_expo", xtext=0.05, ytext=0.75, fontsize=6)
 
 
     def plot_multiple_s_min(self):
@@ -452,6 +450,236 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         plt.show()
         
 
+    def plot_multiple_ds(self):
+        """Plot the mean salary for minimum salary values
+        """       
+        # Load data
+        self._get_data(self.group_name)
+
+        # Check if the data exists
+        if np.any(self.s_ds == None):
+            raise ValueError("No data found for multiple s_min runs.")
+
+        s_all = self.s_ds[:, :, self.skip_values:]  # Remove skip values
+        bankruptcy = self.bankruptcy_ds[:, self.skip_values:]
+        # Calculate mean and median salary
+        s_mean = np.mean(s_all, axis=1)
+        # Create figure
+        # Calculate nrows and ncols
+        nrows = 2
+        ncols = (len(self.ds_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(18, 12))
+        
+        for i, (mean_salary, ds, p_bank) in enumerate(zip(s_mean, self.ds_list, bankruptcy)):
+            ax = axs[i//ncols, i%ncols]
+            
+            twin_x = ax.twinx()
+            twin_x.plot(self.time_values, p_bank, c=self.colours["bankruptcy"], label="Fraction bankrupt", alpha=0.25)
+            twin_x.tick_params(axis='y', labelcolor=self.colours["bankruptcy"])
+            
+            ax.plot(self.time_values, mean_salary, c=self.colours["salary"])
+            ax.tick_params(axis='y', labelcolor=self.colours["salary"])
+            
+            title = r"$\Delta s = $" + f"{ds:.2f}"
+            ax.set_title(title, fontsize=8)
+            ax.set(yscale="log")
+            ax.grid()
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Log Price")
+        
+        fig.suptitle(fr"Salary for different ds values")
+        
+        # save show
+        self._save_fig(fig, "multiple_ds")
+        plt.show()
+
+
+    def plot_multiple_ds_v2(self, group_name_list):
+        """Plot the mean salary for different ds values, each on their own subplot
+        """       
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        ds_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            ds = self.ds
+            # Append values
+            mean_salary_list[i] = mean_salary
+            ds_list[i] = ds
+        
+        # Create figure
+        # Calculate nrows and ncols
+        nrows = 2
+        ncols = (len(group_name_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
+        
+        for i, (mean_salary, ds) in enumerate(zip(mean_salary_list, ds_list)):
+            ax = axs[i//ncols, i%ncols]
+            ax.plot(time_vals, mean_salary, c=self.colours["salary"])
+            ax.set_title(fr"ds = {ds:.2f}", fontsize=8)
+            ax.set(yscale="log")
+            ax.grid()
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Log Price")
+        
+        fig.suptitle("Mean salary for different ds values")
+        
+        # Text, save show,
+        self._text_save_show(fig, axs[0, 0], "multiple_ds_v2", xtext=0.05, ytext=0.75, fontsize=6)
+
+
+    def plot_N_W_ratio(self, group_name_list):
+        """Plot the mean salary for different ds values, each on their own subplot
+        """       
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        bankruptcy_list = np.zeros((len(group_name_list), len(time_vals)))
+        N_list = np.zeros(len(group_name_list))
+        W_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            bankruptcy = self.went_bankrupt[self.skip_values:] / self.N
+            N = self.N
+            W = self.W  
+            # Append values
+            mean_salary_list[i] = mean_salary
+            bankruptcy_list[i] = bankruptcy
+            N_list[i] = N
+            W_list[i] = W
+        N_W_ratio = W_list[0] / N_list[0]
+        # Create figure
+        # Calculate nrows and ncols
+        nrows = 2
+        ncols = (len(group_name_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
+        
+        for i, (mean_salary, bankruptcy, N, W) in enumerate(zip(mean_salary_list, bankruptcy_list, N_list, W_list)):
+            ax = axs[i//ncols, i%ncols]
+            twin_x = ax.twinx()
+            twin_x.plot(time_vals, bankruptcy, c=self.colours["bankruptcy"], alpha=0.5)
+            twin_x.set_ylabel("Fraction bankrupt", color=self.colours["bankruptcy"])
+            twin_x.tick_params(axis='y', labelcolor=self.colours["bankruptcy"])
+            
+            ax.plot(time_vals, mean_salary, c=self.colours["salary"])
+            ax.set_title(fr"$W/N = {W:.0f}/{N:.0f}$", fontsize=8)
+            ax.set(yscale="log")
+            ax.grid()
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Log Price")
+        
+        fig.suptitle(fr"Mean salary for $W/N =$ {N_W_ratio}")
+        
+        # Text, save show,
+        self._text_save_show(fig, axs[0, 0], "N_W_ratio", xtext=0.05, ytext=0.75, fontsize=6)
+        
+        
+    def plot_N_var_W_const(self, group_name_list):
+        """Plot the mean salary for N values, each on their own subplot
+        """       
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        N_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            N = self.N
+            # Append values
+            mean_salary_list[i] = mean_salary
+            N_list[i] = N
+        # Create figure
+        # Calculate nrows and ncols
+        nrows = 2
+        ncols = (len(group_name_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
+        
+        for i, (mean_salary, N) in enumerate(zip(mean_salary_list, N_list)):
+            ax = axs[i//ncols, i%ncols]
+            ax.plot(time_vals, mean_salary, c=self.colours["salary"])
+            ax.set_title(fr"$W/N = {self.W:.0f}/{N:.0f}$", fontsize=8)
+            ax.set(yscale="log")
+            ax.grid()
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Log Price")
+        
+        fig.suptitle(fr"Mean salary for $N$ variable, $W = {self.W}$")
+        
+        # Text, save show,
+        self._text_save_show(fig, axs[0, 0], "N_var_W_const", xtext=0.05, ytext=0.75, fontsize=6)
+
+
+    def plot_N_const_W_var(self, group_name_list):
+        """Plot the mean salary for W values, each on their own subplot
+        """       
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        W_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            W = self.W
+            # Append values
+            mean_salary_list[i] = mean_salary
+            W_list[i] = W
+        # Create figure
+        # Calculate nrows and ncols
+        nrows = 2
+        ncols = (len(group_name_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
+        
+        for i, (mean_salary, W) in enumerate(zip(mean_salary_list, W_list)):
+            ax = axs[i//ncols, i%ncols]
+            ax.plot(time_vals, mean_salary, c=self.colours["salary"])
+            ax.set_title(fr"$W/N = {W:.0f}/{self.N:.0f}$", fontsize=8)
+            ax.set(yscale="log")
+            ax.grid()
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Log Price")
+        
+        fig.suptitle(fr"Mean salary for $W$ variable, $N = {self.N}$")
+        
+        # Text, save show,
+        self._text_save_show(fig, axs[0, 0], "N_const_W_var", xtext=0.05, ytext=0.75, fontsize=6)
+
+        
     def plot_salary_and_debt_distributions(self):
         """Plot the salary and debt distributions at the final time step
         """
@@ -644,46 +872,198 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         """
         # Get data and bin it
         self._get_data(self.group_name)
-        s_bankrupt = self.s[self.went_bankrupt_idx == 1]
-        N_bankrupt = np.sum(self.went_bankrupt_idx)
         # Skip values
-        self.s = self.s[:, self.skip_values:]
-        s_bankrupt = s_bankrupt[self.skip_values:]
+        went_bankrupt_idx = self.went_bankrupt_idx[:, self.skip_values:]
+        s = self.s[:, self.skip_values:]
+        s_bankrupt = s[went_bankrupt_idx == 1]
+        N_bankrupt = len(s_bankrupt)
+        
         # Bins
         Nbins = int(np.sqrt(N_bankrupt))
-        logbins = np.geomspace(np.min(self.s), np.max(self.s), Nbins)
-        # Histogram
-        counts, edges = np.histogram(s_bankrupt, bins=logbins)
+        logbins = np.geomspace(np.min(self.s), np.max(s), Nbins)
         
+        # Get y limits
+        counts, edges = np.histogram(np.ravel(s), bins=logbins)
+        ylim = (None, np.max(counts)*1.05)
+        
+        # Histogram
         fig, (ax, ax1) = plt.subplots(nrows=2)
-        ax.hist(edges[:-1], edges, weights=counts, color=self.colours["salary"])
-        ax.set(ylabel="Log Counts", yscale="log", xscale="log", title="New salary of bankrupt companies")
+        ax.hist(s_bankrupt, bins=logbins, color=self.colours["salary"])
+        ax.set(ylabel="Log Counts", yscale="log", xscale="log", title="New salary of bankrupt companies", ylim=ylim)
         ax.grid()
         
-        ax1.hist(np.ravel(self.s), bins=logbins, color=self.colours["salary"])
-        ax1.set(xlabel="Log Salary", ylabel="Log Counts", yscale="log", xscale="log", title="All salary values")
+        ax1.hist(edges[:-1], edges, weights=counts, color=self.colours["salary"])
+        ax1.set(xlabel="Log Salary", ylabel="Log Counts", yscale="log", xscale="log", title="All salary values", ylim=ylim)
         ax1.grid()
         
         # Text, save, show
         self._text_save_show(fig, ax, "bankrupt_new_salary", fontsize=6)
 
     
-    def plot_time_from_income_change_to_bankruptcy(self):
-        # Get data
-        diff_vals = self.time_from_negative_income_to_bankruptcy(self.skip_values)
-        
-        # Bin it
-        Nbins = int(np.sqrt(len(diff_vals)))
+    def plot_time_from_income_change_to_bankruptcy_distribution(self, show_plot=False):
+        """Histogram of the time from income change to bankruptcy, together with a LLH fit to the distribution.
+        """
+        # Fit the data using log-likelihood minimization
+        _, x_values, y_norm, y_lognorm, y_gamma, diff_vals = self.time_diff_llh_minimize(self.skip_values, show_plot)
+
+        # Bin data for visualization 
+        Nbins = int(0.3 * np.sqrt(len(diff_vals)))
         
         # Create figure
         fig, ax = plt.subplots()
-        ax.hist(diff_vals, bins=Nbins, color=self.colours["time"])      
-        ax.set(xlabel="Time", ylabel="Counts", title="Time from income change to bankruptcy")  
+        ax.hist(diff_vals, bins=Nbins, color=self.colours["time"], density=True, label="Data")      
+        ax.plot(x_values, y_norm, c="grey", label="Double normal LLH fit")
+        ax.plot(x_values, y_lognorm, c="k", label="Double Log-normal LLH fit")
+        ax.plot(x_values, y_gamma, c="gray", label="Double Gamma LLH fit")
+        ax.set(xlabel="Time", ylabel="Frequency", title="Time from income change to bankruptcy")  
         ax.grid()
-        
+        self._add_legend(ax, ncols=3)
         # Text, save, show
         self._text_save_show(fig, ax, "time_from_income_change_to_bankruptcy", xtext=0.05, ytext=0.85, fontsize=6)
 
+
+    def plot_time_from_income_change_with_salary_debt_bankruptcy(self, line_start_mu1=None, line_start_mu2=None, time_steps_to_show=-1):
+        """Plot the time from income change to bankruptcy as horizontal lines together with salary, debt and bankruptcy. 
+        """        
+        # Get data
+        self._get_data(self.group_name)
+        par, _, _, _ = self.time_diff_llh_minimize(self.skip_values)
+        s_mean = np.mean(self.s, axis=0)
+        d_mean = np.mean(self.d, axis=0)
+        # Unpack parameters to get the mean of the two Gaussians
+        mu1, mu2 = par[0], par[2]
+        # Skip values
+        if time_steps_to_show == -1:
+            time_steps_to_show = self.time_steps
+        s_mean = s_mean[self.skip_values: self.skip_values+time_steps_to_show]
+        d_mean = d_mean[self.skip_values: self.skip_values+time_steps_to_show]
+        self.went_bankrupt = self.went_bankrupt[self.skip_values: self.skip_values+time_steps_to_show] / self.N
+        time_values = self.time_values[: time_steps_to_show]
+        
+        if np.any(line_start_mu1 == None):
+            # x starts at the top point of the mean salary
+            idx_line_start_mu1 = np.argmax(s_mean)
+            x_line_start_mu1 = time_values[idx_line_start_mu1]
+            y_line_start_mu1 = s_mean[idx_line_start_mu1]
+            line_start_mu1 = (x_line_start_mu1, y_line_start_mu1)
+
+        if np.any(line_start_mu2 == None):
+            # x starts at the bottom point of the mean debt
+            idx_line_start_mu2 = np.argmax(-d_mean)
+            x_line_start_mu2 = time_values[idx_line_start_mu2]
+            y_line_start_mu2 = d_mean[idx_line_start_mu2]
+            line_start_mu2 = (x_line_start_mu2, y_line_start_mu2)
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=(10, 8))
+        twin_x_bankruptcy = ax.twinx()
+        twin_x_d = ax.twinx()
+        
+        # Salary, debt, bankruptcy
+        ax.plot(time_values, s_mean, label="Salary", c=self.colours["salary"])
+        twin_x_d.plot(time_values, d_mean, label="Debt", c=self.colours["debt"])
+        twin_x_bankruptcy.plot(time_values, self.went_bankrupt, label="Bankruptcy", c=self.colours["bankruptcy"], alpha=0.6)
+        
+        # Time diff
+        # Horizontal
+        ax.hlines(y=line_start_mu1[1], xmin=line_start_mu1[0], xmax=line_start_mu1[0]+mu1, ls="--", lw=3, colors="black", alpha=0.9)  # mu1, short time
+        twin_x_d.hlines(y=line_start_mu2[1], xmin=line_start_mu2[0], xmax=line_start_mu2[0]+mu2, ls="-.", lw=3, colors="grey", alpha=0.9)  # mu2, long time, d min
+        
+        idx_min_s = np.argmin(s_mean)
+        ax.hlines(y=0.0025+s_mean[idx_min_s], xmin=time_values[idx_min_s], xmax=time_values[idx_min_s] + mu2, ls="dotted", lw=3, colors="grey", alpha=0.9)  # mu2, long time, s min
+        
+        # Vertical
+        ax.axvline(x=line_start_mu1[0]+mu1, ls="--", lw=2, color="black", alpha=0.9)  # mu1, short time
+        twin_x_d.axvline(x=line_start_mu2[0]+mu2, ls="-.", lw=2, color="grey", alpha=0.9)  # mu2, long time, d min
+        
+        ax.axvline(x=time_values[idx_min_s] + mu2, ls="dotted", lw=2, color="grey", alpha=0.7)  # mu2, long time, s min
+        
+        # Axis setup        
+        ax.set(xlabel="Time")
+        ax.grid()
+        ax.set_title("Salary, debt, bankruptcy and time from income change to bankruptcy", fontsize=10, )
+        ax.tick_params(axis='y', labelcolor=self.colours["salary"])
+        ax.set_ylabel("Mean Salary", color=self.colours["salary"])
+        twin_x_d.tick_params(axis='y', labelcolor=self.colours["debt"])
+        twin_x_bankruptcy.tick_params(axis='y', labelcolor=self.colours["bankruptcy"])
+        twin_x_d.spines["right"].set_position(("axes", 1))
+
+        # Text, save, show
+        self._text_save_show(fig, ax, "time_diff_salary_debt_bankruptcy", xtext=0.05, ytext=0.85, fontsize=6)
+    
+    
+    def plot_survivors(self, show_peak_plot=False):
+        # Get data
+        survive_arr = self.survive_bust_distribution(show_peak_plot)
+        if len(survive_arr) == 0:
+            print("No data")
+            return
+        # Number of bins
+        max_survive = np.max(survive_arr)
+        binwidth = int(np.floor(max_survive / 15))
+        bins = np.arange(0, np.max(survive_arr)+1, binwidth)
+        
+        # Convert to fraction
+        bins /= self.N
+        survive_arr /= self.N
+        
+        # Create figure
+        fig, ax = plt.subplots()
+        ax.hist(survive_arr, bins=bins, color="grey")
+        ax.set(xlabel="Survivors fraction", ylabel=f"Counts (bw={binwidth})", title="Fraction of companies that survive a bust")
+        ax.grid()
+
+        # # Add percentage values below
+        # locs, labels = plt.xticks()
+        # labels = ax.get_xticks()
+        # sec = ax.secondary_xaxis(location=0)
+        # fraction_values = np.array(labels) / self.N
+        # sec.set_xticks(locs, labels=fraction_values)
+
+        # Text, save, show
+        self._text_save_show(fig, ax, "survivors", xtext=0.05, ytext=0.85, fontsize=6)
+    
+    
+    def plot_running_KDE(self, bandwidth_s=None, bandwidth_d=None, eval_points=100, s_lim=None, d_lim=None, kernel="gaussian", show_mean=False, show_title=False):
+        # Get data
+        s_eval, KDE_prob = self.running_KDE("salary", bandwidth_s, eval_points, kernel, s_lim)  # KDE probabilities
+        d_eval, KDE_prob_d = self.running_KDE("debt", bandwidth_d, eval_points, kernel, d_lim)  # KDE probabilities
+        time_values, s_mean, d_mean = self._skip_values(self.time_values, self.s.mean(axis=0), self.d.mean(axis=0))  # Get mean salary and skip values
+        
+        # Create figure
+        figsize = (16, 12)
+        ncols, nrows = 1, 2
+        fig, (ax, ax_d) = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+        # Title
+        if bandwidth_s == None:
+            bandwidth_s = s_eval[1] - s_eval[0]
+        if bandwidth_d == None:
+            bandwidth_d = d_eval[1] - d_eval[0]
+        title = f"KDE, bw salary={bandwidth_s}, bw capacity={bandwidth_d}"
+        if show_title: fig.suptitle(title, fontsize=10)
+    
+        # Salary
+        label_fontsize = 15
+        ticks_fontsize = 10
+        im = ax.imshow(KDE_prob, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(s_eval), np.max(s_eval)], cmap="hot")
+        if show_mean: ax.plot(time_values, s_mean, c="magenta", label="Mean salary")
+        ax.set(xticks=[])
+        ax.set_ylabel("Salary", fontsize=label_fontsize)
+        ax.tick_params(axis='both', which='major', labelsize=ticks_fontsize)
+        # Debt
+        im_d = ax_d.imshow(KDE_prob_d, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(d_eval), np.max(d_eval)], cmap="magma")
+        if show_mean: ax_d.plot(time_values, -d_mean, c="red", label="Mean capacity")
+        ax_d.set_ylabel("Capacity", fontsize=label_fontsize)
+        ax_d.set_xlabel("Time", fontsize=label_fontsize)
+        ax_d.tick_params(axis='both', which='major', labelsize=ticks_fontsize)
+        
+        # Title and axis setup
+        # Add colorbar
+        fig.colorbar(im, ax=ax, label="Frequency", ticks=[], pad=0.01)
+        fig.colorbar(im_d, ax=ax_d, label="Frequency", ticks=[], pad=0.01)
+        # Text, save, show
+        self._text_save_show(fig, ax, "running_KDE", xtext=0.05, ytext=0.95, fontsize=0)
+    
 
     def animate_w0_wnon0(self, skip_time_steps=0):
         """Make a histogram animation of the salary distribution of companies with w=0 at each time step together with the salary picked of bankrupt companies, and another with w>0
