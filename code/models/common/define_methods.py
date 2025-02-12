@@ -141,7 +141,7 @@ class MethodsWorkForce(WorkForce):
         """All companies update their salaries depending on whether they made a profit or not. 
         """
         additive_noise = 0 #np.random.uniform(-0.05, 0.05, size=self.N)
-        noise_factor = np.random.uniform(0, 1, size=self.N)
+        noise_factor = 1 # np.random.uniform(0, 1, size=self.N)
         ds_noise = self.ds * noise_factor
         negative_correction = 1 / (1 + np.abs(ds_noise))
         # Values after update
