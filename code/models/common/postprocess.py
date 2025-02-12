@@ -2,6 +2,7 @@ import numpy as np
 from scipy.signal import find_peaks, savgol_filter
 from scipy.ndimage import uniform_filter1d
 import scipy.special as special
+import scipy.signal
 import matplotlib.pyplot as plt
 import h5py
 from sklearn.neighbors import KernelDensity
@@ -399,3 +400,76 @@ class PostProcess:
         
         return eval, KDE_prop_arr
     
+    # Power Spectral Density (PSD) analysis
+    
+    def _compute_PSD(self, data, fs):
+        """Use Welch's method to compute the Power Spectral Density (PSD) of the data.
+
+        Args:
+            data (_type_): The data to compute the PSD of.
+            fs (_type_): The sampling frequency.
+
+        Returns:
+            _type_: _description_
+        """
+        if len(data) == 0:
+            print("No data to compute PSD, returning empty arrays")
+            return np.array([]), np.array([])
+        # Detrend the data
+        data_detrended = scipy.signal.detrend(data)
+        freqs, psd = scipy.signal.welch(data_detrended, fs=fs, nperseg=min(8192, len(data_detrended)))
+        return freqs, psd
+
+    
+    def _find_dominant_frequencies(self, freqs, psd, number_of_frequencies):
+        """Find the peaks in the Power spectral density (PSD) and return the number_of_frequencies most prominent peaks.
+
+        Args:
+            freqs (_type_): _description_
+            psd (_type_): _description_
+            number_of_frequencies (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        if len(psd) == 0:
+            print("No data to find dominant frequencies, returning empty arrays")
+            return np.array([np.nan]*number_of_frequencies), np.array([np.nan]*number_of_frequencies)
+        peaks, properties = scipy.signal.find_peaks(psd, prominence=np.max(psd)*0.05)
+        if len(peaks) == 0:
+            print("No peaks found, returning empty arrays")
+            return np.array([np.nan]*number_of_frequencies), np.array([np.nan]*number_of_frequencies)
+        sorted_indices = np.argsort(psd[peaks])[::-1]  # Sort in descending order
+        dominant_freqs = freqs[peaks][sorted_indices][:number_of_frequencies]  # Get the the number_of_frequencies most prominent frequency peaks
+        dominant_powers = psd[peaks][sorted_indices][:number_of_frequencies]
+       
+        # If less than number_of_frequencies peaks are found, fill the rest with NaN
+        if len(dominant_freqs) < number_of_frequencies:
+            dominant_freqs = np.pad(dominant_freqs, (0, number_of_frequencies-len(dominant_freqs)), constant_values=np.nan)
+            dominant_powers = np.pad(dominant_powers, (0, number_of_frequencies-len(dominant_powers)), constant_values=np.nan)
+        return dominant_freqs, dominant_powers
+    
+    
+    def _PSD_on_dataset(self, data, number_of_frequencies, fs=1, show_power_plot=False):
+        """Calls the _compuse_PSD and _find_dominant_frequencies to actually do the calculation.
+
+        Args:
+            data (_type_): _description_
+            number_of_frequencies (_type_): _description_
+            fs (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        freqs, psd = self._compute_PSD(data, fs=fs)
+        dominant_freqs, dominant_powers = self._find_dominant_frequencies(freqs, psd, number_of_frequencies)
+        
+        if show_power_plot:
+            plt.figure()
+            plt.semilogy(freqs, psd)
+            plt.xlabel("Frequency [Hz]")
+            plt.ylabel("Power Spectral Density")
+            plt.title("PSD of Dataset")
+            plt.show()
+
+        return dominant_freqs, dominant_powers
