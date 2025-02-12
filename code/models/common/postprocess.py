@@ -4,6 +4,7 @@ from scipy.ndimage import uniform_filter1d
 import scipy.special as special
 import matplotlib.pyplot as plt
 import h5py
+from sklearn.neighbors import KernelDensity
 from run import file_path
 import general_functions
 
@@ -42,6 +43,9 @@ class PostProcess:
                 "s_s_min": np.array(group.get("s_s_min", None)),
                 "bankruptcy_s_min": np.array(group.get("bankruptcy_s_min", None)),
                 "s_min_list": np.array(group.attrs.get("s_min_list", None)),
+                "s_ds": np.array(group.get("s_ds", None)),
+                "bankruptcy_ds": np.array(group.get("bankruptcy_ds", None)),
+                "ds_list": np.array(group.attrs.get("ds_list", None))
             }
             self.loaded_groups[gname] = data
     
@@ -73,9 +77,37 @@ class PostProcess:
         self.s_s_min = data["s_s_min"]
         self.bankruptcy_s_min = data["bankruptcy_s_min"]
         self.s_min_list = data["s_min_list"]
+        self.s_ds = data["s_ds"]
+        self.bankruptcy_ds = data["bankruptcy_ds"]
+        self.ds_list = data["ds_list"]
+        self.time_values = np.arange(self.time_steps)
+    
+    
+    def _skip_values(self, *variables):
+        """For all array-like variables given, return the values from skip_values to the end of the array.
+
+        Args:
+            *variables: Any number of array-like variables.
+
+        Returns:
+            list: A list of sliced arrays.
+        """
+        size_reduced_arrays = []
+        for var in variables:
+            # If arr is not an array, subtract the skip_values
+            if not isinstance(var, np.ndarray):
+                size_reduced_arrays.append(var - self.skip_values)
+            # If var is 2dim, skip values in axis=1
+            elif var.ndim == 2:
+                size_reduced_arrays.append(var[:, self.skip_values:])
+            # var is a 1dim array
+            else:
+                size_reduced_arrays.append(var[self.skip_values:])
             
+        return tuple(size_reduced_arrays)
+        
             
-    def time_from_negative_income_to_bankruptcy(self, skip_values):
+    def time_from_negative_income_to_bankruptcy(self, skip_values, show_plot):
         """For each company:
             - Find all times of bankruptcy using find_peaks to avoid counting multiple bankruptcies due to bad salary choice.
             - Find the time of all changes in income from negative to positive using find_peaks
@@ -89,7 +121,7 @@ class PostProcess:
         
         for i in range(self.N):            
             # Get the mean and std of the time from bottom to peak
-            bot_times, top_times = self._get_peak_pairs(i, skip_values)
+            bot_times, top_times = self._get_peak_pairs(i, skip_values, show_plot)
             time_from_bottom_to_peak = top_times - bot_times
             
             # Store values
@@ -98,7 +130,7 @@ class PostProcess:
         return np.concatenate(time_diff_arr)
             
             
-    def _get_peak_pairs(self, idx, skip_values, show_plot=False):
+    def _get_peak_pairs(self, idx, skip_values, show_plot):
         d_skipped = self.d[idx, skip_values:]
         bot_height = np.abs(np.min(d_skipped) * 0.25)
         bottom_idx, _ = find_peaks(-d_skipped, height=bot_height, distance=30, prominence=bot_height, width=25)  # Maybe play around with plateau size?
@@ -161,9 +193,9 @@ class PostProcess:
         if show_plot:
             plt.plot(np.array(bottom_idx)+skip_values, d_skipped[bottom_idx], "o", color="green", markersize=5)
             plt.plot(np.array(top_idx)+skip_values, d_skipped[top_idx], "o", color="red", markersize=5)
-            plt.axvline(x=5360, ls="dashed", color="grey")
-            plt.axvline(x=5600, ls="dashed", color="grey")
-            plt.axvline(x=5840, ls="dashed", color="grey")
+            # plt.axvline(x=5360, ls="dashed", color="grey")
+            # plt.axvline(x=5600, ls="dashed", color="grey")
+            # plt.axvline(x=5840, ls="dashed", color="grey")
             plt.xlabel("Time")
             plt.ylabel("Debt")
             plt.grid()
@@ -174,8 +206,8 @@ class PostProcess:
         return bottom_idx, np.array(top_idx)
                 
         
-    def time_diff_llh_minimize(self, skip_values):
-        diff_vals = self.time_from_negative_income_to_bankruptcy(skip_values)
+    def time_diff_llh_minimize(self, skip_values, show_plot):
+        diff_vals = self.time_from_negative_income_to_bankruptcy(skip_values, show_plot)
 
         def _double_gaussian_pdf(x, mu1, sigma1, mu2, sigma2, p):
             # Ensure only positive values
@@ -184,7 +216,6 @@ class PostProcess:
             gauss1 = p * 1 / (sigma1 * np.sqrt(2 * np.pi)) * np.exp(-1/2 * (x - mu1)**2 / sigma1**2) 
             gauss2 = (1 - p) * 1 / (sigma2 * np.sqrt(2 * np.pi)) * np.exp(-1/2 * (x - mu2)**2 / sigma2**2)
             return gauss1 + gauss2
-        
         
         def _double_log_normal_pdf(x, mu1, sigma1, mu2, sigma2, p):
             # Ensure only positive values
@@ -283,5 +314,88 @@ class PostProcess:
                 survive_arr[i] = self._survive_bust_single([peaks[i], peaks[i+1]])
             
         return survive_arr
+    
+    
+    def single_KDE(self, x_data: str, time_point=10, bandwidth=None, eval_points=100, kernel="gaussian", s_lim=None):
+        """Plot the KDE of a single time step.
+
+        Args:
+            x_data (str): Determines which data to use. Either "salary" or "debt".
+            bandwidth (_type_, optional): _description_. Defaults to None.
+            eval_points (int, optional): _description_. Defaults to 100.
+            kernel (str, optional): _description_. Defaults to "gaussian".
+            s_lim (_type_, optional): _description_. Defaults to None.
+        """
+        # Get data
+        self._get_data(self.group_name)
+        colour_name = x_data
+        if x_data == "salary":
+            data = self.s
+        elif x_data == "debt":
+            data = -self.d
+        elif x_data == "delta_debt":
+            data = -np.diff(self.d, axis=1)
+            colour_name = "debt"
         
+        s, = self._skip_values(data)
+        s0 = s[:, time_point]
+        # Eval points
+        if np.any(s_lim == None):
+            s_lim = (s0.min(), s0.max())
+        s_eval = np.linspace(*s_lim, eval_points)
+        # Define KDE
+        if bandwidth is None:
+            bandwidth = s_eval[1] - s_eval[0]
+        kde = KernelDensity(kernel=kernel, bandwidth=bandwidth)
+        # Fit KDE
+        kde.fit(s0[:, None])
+        log_score = kde.score_samples(s_eval[:, None])
+        KDE_prop = np.exp(log_score)
         
+        # Histogram
+        Nbins = int(np.sqrt(len(s0)))
+        
+        # Create figure
+        fig, ax = plt.subplots()
+        ax.hist(s0, bins=Nbins, label=f"{x_data} histogram", color=self.colours[colour_name], alpha=0.9, density=True)
+        ax.plot(s_eval, KDE_prop, label="KDE", c="black")
+        ax.set(xlabel="s", ylabel="P(s)", title=f"{kernel} KDE, bw={bandwidth:.1e}, eval_points={eval_points}")
+        ax.grid()
+        ax.legend()
+        plt.show()
+    
+    
+    def running_KDE(self, x_data: str, bandwidth=None, eval_points=100, kernel="gaussian", data_lim=None):
+        """Loop over all time steps and calculate the KDE for each time step.
+        """
+        # Get data
+        self._get_data(self.group_name)
+        add_time = 0
+        if x_data == "salary":
+            x_data = self.s
+        elif x_data == "debt":
+            x_data = -self.d
+        elif x_data == "delta_debt":
+            x_data = -np.diff(self.d, axis=1)
+            add_time = 1  # For delta_debt need to add an additional time step to account for the difference losing one
+        data, time_steps = self._skip_values(x_data, self.time_steps-add_time)
+        # Calculate points for the KDE to be evaulated at such that all times have the same evaluation points
+        if np.any(data_lim == None):
+            data_lim = (data.min(), data.max())
+        eval = np.linspace(*data_lim, eval_points)
+        # Empty array for storing KDE probabilities
+        KDE_prop_arr = np.zeros((eval_points, time_steps))
+        # Define KDE
+        if bandwidth is None:
+            bandwidth = eval[1] - eval[0]
+        kde = KernelDensity(kernel=kernel, bandwidth=bandwidth)
+        # Loop over time and calculate KDE
+        for i in range(time_steps):
+            # Fit KDE
+            s_current_time = data[:, i]
+            kde.fit(s_current_time[:, None])
+            log_score = kde.score_samples(eval[:, None])
+            KDE_prop_arr[:, i] = np.exp(log_score)
+        
+        return eval, KDE_prop_arr
+    
