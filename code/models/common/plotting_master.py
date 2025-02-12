@@ -1,6 +1,7 @@
 import general_functions 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 import functools
 import numpy as np
 from run import dir_path_image
@@ -289,9 +290,9 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
 
         self._add_legend(ax, ncols=3)
         self._text_save_show(fig, ax, "mutations", xtext=0.05, ytext=0.8)
-    
-        
-    def plot_multiple_mutation_size(self, group_name_list):
+
+
+    def plot_multiple_mutation_size_and_minmax(self, group_name_list):
         """Plot the mean salary on one subplot, and the min and max on another subplot for different mutation sizes
         """       
         # Load data
@@ -302,9 +303,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         for i, gname in enumerate(group_name_list):
             self._get_data(gname)
             mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
-            m = self.m
             mean_salary_list[i] = mean_salary
-            mutation_size_list[i] = m
+            mutation_size_list[i] = self.m
             
         # Get min and max salary, divide by mutation size
         min_salary = np.min(mean_salary_list, axis=1) / mutation_size_list
@@ -312,7 +312,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Create figure
         fig, (ax, ax1) = plt.subplots(nrows=2)
-        c_list = general_functions.list_of_colors[:len(group_name_list)]
+        c_list = general_functions.list_of_colors
         for i, (mean_salary, m) in enumerate(zip(mean_salary_list, mutation_size_list)):
             ax.plot(time_vals, mean_salary, label=f"m={m}", c=c_list[i], alpha=0.7)
             ax1.plot(mutation_size_list, min_salary, "v", c=c_list[i])
@@ -325,10 +325,10 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax1.grid()
         
         self._add_legend(ax, ncols=len(group_name_list)//2, fontsize=5)
-        self._text_save_show(fig, ax, "multiple_mutation_size", xtext=0.05, ytext=0.75)
+        self._text_save_show(fig, ax, "multiple_mutation_size_minmax", xtext=0.05, ytext=0.75)
     
     
-    def plot_repeated_mutation_size(self):
+    def plot_min_max_vs_m(self):
         """Plot the mean of repeated measurements of the minimum and maximum of the mean salary, together with their uncertanties.
         """
         # Calculate mean and std of min and max salary for each m
@@ -357,7 +357,60 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Text, save show
         self._text_save_show(fig, ax, "repeated_mutation_size", xtext=0.05, ytext=0.75, fontsize=6)
+
+
+    def plot_multiple_m(self, group_name_list, same_plot=False, time_values_show=500):
+        """Plot the mean salary for different m values, each on their own subplot or on the same plot if same_plot is True.
+        """       
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        m_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            # Append values
+            mean_salary_list[i] = mean_salary
+            m_list[i] = self.m
+        
+        # Plot all salary means on the same plot
+        if same_plot:
+            fig, ax = plt.subplots(figsize=(12, 8))
+            for i, (mean_salary, m) in enumerate(zip(mean_salary_list, m_list)):
+                ax.plot(time_vals[:time_values_show], mean_salary[:time_values_show], label=f"m = {m:.3f}")
+            ax.set(title="Mean salary for different m values", xlabel="Time", ylabel="Price", yscale="log")
+            ax.grid()
+            self._add_legend(ax, ncols=len(group_name_list)//2, y=0.9)
+            save_ax = ax
+        
+        else:
+            # Create figure
+            # Calculate nrows and ncols
+            nrows = 2
+            ncols = (len(group_name_list) + nrows - 1) // nrows
+            fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
             
+            for i, (mean_salary, m) in enumerate(zip(mean_salary_list, m_list)):
+                ax = axs[i//ncols, i%ncols]
+                ax.plot(time_vals, mean_salary, c=self.colours["salary"])
+                ax.set_title(fr"m = {m:.3f}", fontsize=8)
+                ax.grid()
+
+                # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+                subplot_spec = ax.get_subplotspec()
+                if subplot_spec.is_last_row():
+                    ax.set_xlabel("Time")
+                if subplot_spec.is_first_col():
+                    ax.set_ylabel("Price")
+            
+            fig.suptitle("Mean salary for different m values")
+            save_ax = axs[0, 0]
+        
+        # Text, save show,
+        self._text_save_show(fig, save_ax, f"multiple_m_same_plot{same_plot}", xtext=0.05, ytext=0.75, fontsize=6)
+
         
     def plot_multiple_prob_expo(self, group_name_list):
         """Plot the mean salary for different probability exponents each on their own subplot
@@ -450,56 +503,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         plt.show()
         
 
-    def plot_multiple_ds(self):
-        """Plot the mean salary for minimum salary values
-        """       
-        # Load data
-        self._get_data(self.group_name)
-
-        # Check if the data exists
-        if np.any(self.s_ds == None):
-            raise ValueError("No data found for multiple s_min runs.")
-
-        s_all = self.s_ds[:, :, self.skip_values:]  # Remove skip values
-        bankruptcy = self.bankruptcy_ds[:, self.skip_values:]
-        # Calculate mean and median salary
-        s_mean = np.mean(s_all, axis=1)
-        # Create figure
-        # Calculate nrows and ncols
-        nrows = 2
-        ncols = (len(self.ds_list) + nrows - 1) // nrows
-        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(18, 12))
-        
-        for i, (mean_salary, ds, p_bank) in enumerate(zip(s_mean, self.ds_list, bankruptcy)):
-            ax = axs[i//ncols, i%ncols]
-            
-            twin_x = ax.twinx()
-            twin_x.plot(self.time_values, p_bank, c=self.colours["bankruptcy"], label="Fraction bankrupt", alpha=0.25)
-            twin_x.tick_params(axis='y', labelcolor=self.colours["bankruptcy"])
-            
-            ax.plot(self.time_values, mean_salary, c=self.colours["salary"])
-            ax.tick_params(axis='y', labelcolor=self.colours["salary"])
-            
-            title = r"$\Delta s = $" + f"{ds:.2f}"
-            ax.set_title(title, fontsize=8)
-            ax.set(yscale="log")
-            ax.grid()
-
-            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
-            subplot_spec = ax.get_subplotspec()
-            if subplot_spec.is_last_row():
-                ax.set_xlabel("Time")
-            if subplot_spec.is_first_col():
-                ax.set_ylabel("Log Price")
-        
-        fig.suptitle(fr"Salary for different ds values")
-        
-        # save show
-        self._save_fig(fig, "multiple_ds")
-        plt.show()
-
-
-    def plot_multiple_ds_v2(self, group_name_list):
+    def plot_multiple_ds(self, group_name_list, same_plot=False):
         """Plot the mean salary for different ds values, each on their own subplot
         """       
         # Load data
@@ -516,31 +520,261 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             mean_salary_list[i] = mean_salary
             ds_list[i] = ds
         
+        # Plot all salary means on the same plot
+        if same_plot:
+            fig, ax = plt.subplots(figsize=(12, 8))
+            for i, (mean_salary, ds) in enumerate(zip(mean_salary_list, ds_list)):
+                ax.plot(time_vals[:500], mean_salary[:500], label=f"ds = {ds:.3f}")
+            ax.set(title="Mean salary for different ds values", xlabel="Time", ylabel="Price")
+            ax.grid()
+            self._add_legend(ax, ncols=len(group_name_list)//2, y=0.9)
+            save_ax = ax
+        
+        else:
+            # Create figure
+            # Calculate nrows and ncols
+            nrows = 2
+            ncols = (len(group_name_list) + nrows - 1) // nrows
+            fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
+            
+            for i, (mean_salary, ds) in enumerate(zip(mean_salary_list, ds_list)):
+                ax = axs[i//ncols, i%ncols]
+                ax.plot(time_vals, mean_salary, c=self.colours["salary"])
+                ax.set_title(fr"ds = {ds:.3f}", fontsize=8)
+                ax.set(yscale="linear")
+                ax.grid()
+
+                # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+                subplot_spec = ax.get_subplotspec()
+                if subplot_spec.is_last_row():
+                    ax.set_xlabel("Time")
+                if subplot_spec.is_first_col():
+                    ax.set_ylabel("Price")
+            
+            fig.suptitle("Mean salary for different ds values")
+            save_ax = axs[0, 0]
+        
+        # Text, save show,
+        self._text_save_show(fig, save_ax, f"multiple_ds_same_plot{same_plot}", xtext=0.05, ytext=0.75, fontsize=6)
+
+
+    def plot_ds_frequency(self, group_name_list):
+        """Using the Power Spectral Density to find the frequency of the ds values in ds_list and plot them
+        """
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        ds_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            ds = self.ds
+            # Append values
+            mean_salary_list[i] = mean_salary
+            ds_list[i] = ds
+        
+        # For each data set, using PSD find the frequency of the oscillation by taking the max frequency of the two most dominant frequencies
+        freq_list = np.zeros(len(ds_list))
+        freq2_list = np.zeros(len(ds_list))
+        for i, mean_salary in enumerate(mean_salary_list):
+            freq, psd = self._PSD_on_dataset(mean_salary, number_of_frequencies=2, fs=1)
+            # freq_list has the most prominent frequency, and freq2_list has the second most prominent frequency
+            freq_list[i] = freq[0]
+            freq2_list[i] = freq[1]
+        
+        # Linear fit to dominant frequency data        
+        par, cov = np.polyfit(ds_list[:-3], freq_list[:-3], deg=1, cov=True)
+        std = np.sqrt(np.diag(cov))
+        x_fit = np.linspace(np.min(ds_list), np.max(ds_list), 100)
+        y_fit = par[0] * x_fit + par[1]
+        
         # Create figure
-        # Calculate nrows and ncols
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.plot(ds_list, freq_list, "o", label="Most prominent frequency")
+        ax.plot(ds_list, freq2_list, "x", label="Second most prominent frequency")
+        ax.plot(x_fit, y_fit, ls="--", label=r"Linear fit (excluding high $\Delta s$)")
+        ax.set(xlabel=r"$\Delta s$", ylabel="Frequency", title=r"Mean salary oscillation frequency")
+        self._add_legend(ax, ncols=3, x=0.5, y=0.95)
+        ax.grid()
+        
+        # Print the fit parameters with their uncertainty
+        fit_text = fr"$a = $ {par[0]:.3f} $\pm$ {std[0]:.3f}, $b = $ {par[1]:.2f} $\pm$ {std[1]:.5f}"
+        ax.text(0.95, 0.85, fit_text, transform=ax.transAxes, fontsize=8, horizontalalignment="right")
+        print(fit_text)
+        
+        # Text, save show,
+        self._text_save_show(fig, ax, "ds_frequency", xtext=0.05, ytext=0.75, fontsize=7)
+        
+
+    def plot_ds_power_spectrum(self, group_name_list):
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        ds_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            ds = self.ds
+            # Append values
+            mean_salary_list[i] = mean_salary
+            ds_list[i] = ds
+        
+        psd_list = []
+        freq_list = []
+        for i, mean_salary in enumerate(mean_salary_list):
+            freq, psd = self._compute_PSD(mean_salary, fs=1)
+            freq_list.append(freq)
+            psd_list.append(psd)
+        
+        # Create figure. One subplot for each ds value and corresponding data set
         nrows = 2
         ncols = (len(group_name_list) + nrows - 1) // nrows
         fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
         
-        for i, (mean_salary, ds) in enumerate(zip(mean_salary_list, ds_list)):
+        for i, (psd, freq, ds) in enumerate(zip(psd_list, freq_list, ds_list)):
             ax = axs[i//ncols, i%ncols]
-            ax.plot(time_vals, mean_salary, c=self.colours["salary"])
-            ax.set_title(fr"ds = {ds:.2f}", fontsize=8)
-            ax.set(yscale="log")
+            ax.semilogy(freq, psd)
+            ax.set_title(f"ds = {ds:.3f}", fontsize=7)
             ax.grid()
 
             # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
             subplot_spec = ax.get_subplotspec()
             if subplot_spec.is_last_row():
-                ax.set_xlabel("Time")
+                ax.set_xlabel("Frequency")
             if subplot_spec.is_first_col():
-                ax.set_ylabel("Log Price")
+                ax.set_ylabel("Power Spectral Density")
+                
+            # Insert a zoomed in plot of the first peak
+            axins = inset_axes(ax, "30%", "30%", loc="upper right")
+            axins.semilogy(freq, psd)
+            # Determine limits
+            peak_idx = np.argmax(psd)
+            number_of_points_to_show = 20
+            x1, x2 = -0.001, 0.05
+            mask = np.logical_and(freq >= x1, freq <= x2)
+            y1, y2 = np.min(psd[mask]), np.max(psd[mask])
+            axins.set_xlim(x1, x2)
+            axins.set_ylim(y1, y2)
+            axins.set_xticks([])
+            axins.set_yticks([])
+            mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.5")
+            
         
-        fig.suptitle("Mean salary for different ds values")
+        fig.suptitle("Power Spectral Density of mean salary for different ds values")
+        # Text, save show,
+        self._text_save_show(fig, axs[0, 0], "ds_power_spectrum", xtext=0.05, ytext=0.75, fontsize=6)
+        
+        
+    def plot_m_frequency(self, group_name_list):
+        """Using the Power Spectral Density to find the frequency of the ds values in ds_list and plot them
+        """
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        m_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            # Append values
+            mean_salary_list[i] = mean_salary
+            m_list[i] = self.m
+        
+        # For each data set, using PSD find the frequency of the oscillation by taking the max frequency of the two most dominant frequencies
+        freq_list = np.zeros(len(m_list))
+        freq2_list = np.zeros(len(m_list))
+        for i, mean_salary in enumerate(mean_salary_list):
+            freq, psd = self._PSD_on_dataset(mean_salary, number_of_frequencies=2, fs=1)
+            # freq_list has the most prominent frequency, and freq2_list has the second most prominent frequency
+            freq_list[i] = freq[0]
+            freq2_list[i] = freq[1]
+        
+        # Linear fit to dominant frequency data        
+        par, cov = np.polyfit(m_list, freq_list, deg=1, cov=True)
+        std = np.sqrt(np.diag(cov))
+        x_fit = np.linspace(np.min(m_list), np.max(m_list), 100)
+        y_fit = par[0] * x_fit + par[1]
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.plot(m_list, freq_list, "o", label="Most prominent frequency")
+        ax.plot(m_list, freq2_list, "x", label="Second most prominent frequency")
+        ax.plot(x_fit, y_fit, ls="--", label=r"Linear fit (excluding high $\Delta s$)")
+        ax.set(xlabel=r"Mutation magnitude $m$", ylabel="Frequency", title=r"Mean salary oscillation frequency")
+        self._add_legend(ax, ncols=3, x=0.5, y=0.95)
+        ax.grid()
+        
+        # Print the fit parameters with their uncertainty
+        fit_text = fr"$a = $ {par[0]:.3f} $\pm$ {std[0]:.3f}, $b = $ {par[1]:.2f} $\pm$ {std[1]:.5f}"
+        ax.text(0.95, 0.85, fit_text, transform=ax.transAxes, fontsize=8, horizontalalignment="right")
+        print(fit_text)
         
         # Text, save show,
-        self._text_save_show(fig, axs[0, 0], "multiple_ds_v2", xtext=0.05, ytext=0.75, fontsize=6)
+        self._text_save_show(fig, ax, "m_frequency", xtext=0.05, ytext=0.75, fontsize=7)
+        
 
+    def plot_m_power_spectrum(self, group_name_list):
+        # Load data
+        self._get_data(group_name_list[0])
+        time_vals = np.arange(self.skip_values, self.time_steps)
+        mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
+        m_list = np.zeros(len(group_name_list))
+        for i, gname in enumerate(group_name_list):
+            # Get values
+            self._get_data(gname)
+            mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
+            # Append values
+            mean_salary_list[i] = mean_salary
+            m_list[i] = self.m
+        
+        psd_list = []
+        freq_list = []
+        for i, mean_salary in enumerate(mean_salary_list):
+            freq, psd = self._compute_PSD(mean_salary, fs=1)
+            freq_list.append(freq)
+            psd_list.append(psd)
+        
+        # Create figure. One subplot for each ds value and corresponding data set
+        nrows = 2
+        ncols = (len(group_name_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
+        
+        for i, (psd, freq, ds) in enumerate(zip(psd_list, freq_list, m_list)):
+            ax = axs[i//ncols, i%ncols]
+            ax.semilogy(freq, psd)
+            ax.set_title(fr"$m =$ {ds:.3f}", fontsize=7)
+            ax.grid()
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Frequency")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Power Spectral Density")
+                
+            # Insert a zoomed in plot of the first peak
+            axins = inset_axes(ax, "30%", "30%", loc="upper right")
+            axins.semilogy(freq, psd)
+            # Determine limits
+            x1, x2 = -0.001, 0.05
+            mask = np.logical_and(freq >= x1, freq <= x2)
+            y1, y2 = np.min(psd[mask]), np.max(psd[mask])
+            axins.set_xlim(x1, x2)
+            axins.set_ylim(y1, y2)
+            axins.set_xticks([])
+            axins.set_yticks([])
+            mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.5")
+            
+        
+        fig.suptitle("Power Spectral Density of mean salary for different m values")
+        # Text, save show,
+        self._text_save_show(fig, axs[0, 0], "m_power_spectrum", xtext=0.05, ytext=0.75, fontsize=6)
+        
 
     def plot_N_W_ratio(self, group_name_list):
         """Plot the mean salary for different ds values, each on their own subplot
@@ -1059,8 +1293,12 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Title and axis setup
         # Add colorbar
-        fig.colorbar(im, ax=ax, label="Frequency", ticks=[], pad=0.01)
-        fig.colorbar(im_d, ax=ax_d, label="Frequency", ticks=[], pad=0.01)
+        cbar = fig.colorbar(im, ax=ax, ticks=[], pad=0.01)
+        cbar_d = fig.colorbar(im_d, ax=ax_d, ticks=[], pad=0.01)
+        
+        cbar.set_label(label="Frequency", fontsize=label_fontsize)
+        cbar_d.set_label(label="Frequency", fontsize=label_fontsize)
+
         # Text, save, show
         self._text_save_show(fig, ax, "running_KDE", xtext=0.05, ytext=0.95, fontsize=0)
     
