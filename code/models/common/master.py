@@ -17,9 +17,7 @@ class WorkForce():
         self.group_name = self._get_group_name()
         # Set seed
         np.random.seed(seed)
-        
-        self._initialize_market_variables()
-        
+            
         
     def _get_group_name(self):
         return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_snew{self.mutation_method}_rf{self.rf_name}_ProbExpo{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}"
@@ -28,7 +26,7 @@ class WorkForce():
     def _initialize_market_variables(self):
         # Company variables
         self.w = np.ones(self.N, dtype=np.int32)
-        self.d = -2 * np.ones(self.N, dtype=np.float32)
+        self.d = np.zeros(self.N, dtype=np.float32) #-2 * np.ones(self.N, dtype=np.float32)
         self.salary = np.random.uniform(self.mutation_magnitude, 3*self.mutation_magnitude, self.N)
         
         # Initial values
@@ -85,9 +83,8 @@ class WorkForce():
         
 
     def _simulation(self):
-        print("s_min = ", self.salary_min)
         # Initialize variables and history arrays
-        # self._initialize_market_variables()  # Moved to __init__
+        self._initialize_market_variables()  # Moved to __init__
         self._initialize_history_arrays()
         self._update_workers()  # Run once to get initial values for workers
         
