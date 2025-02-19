@@ -15,10 +15,17 @@ class WorkForce():
         self.seed = seed
         
         self.group_name = self._get_group_name()
-        # Set seed
-        np.random.seed(seed)
+        self._set_seed(self.seed)    
+    
+    
+    def _set_seed(self, seed=None):
+        """Set the seed for the random number generator. 
+        """
+        # If the instance does not have a seed, set it to None
+        self.seed = seed
+        np.random.seed(self.seed)
+    
             
-        
     def _get_group_name(self):
         return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_snew{self.mutation_method}_rf{self.rf_name}_ProbExpo{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}"
     
