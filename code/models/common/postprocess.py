@@ -41,6 +41,7 @@ class PostProcess:
                 "m": np.array(group.attrs.get("m", None)),
                 "prob_expo": np.array(group.attrs.get("prob_expo", None)),
                 "m_repeated": np.array(group.attrs.get("m_repeated", None)),
+                "s_min": np.array(group.attrs.get("s_min", None)),
                 "s_s_min": np.array(group.get("s_s_min", None)),
                 "bankruptcy_s_min": np.array(group.get("bankruptcy_s_min", None)),
                 "s_min_list": np.array(group.attrs.get("s_min_list", None)),
@@ -71,6 +72,7 @@ class PostProcess:
         self.ds = data["ds"]
         self.rf = data["rf"]
         self.m = data["m"]
+        self.s_min = data["s_min"]
         self.prob_expo = data["prob_expo"]
         self.peak_idx = data["peak_idx"]
         self.salary_repeated_m_runs = data["repeated_m_runs"]
@@ -81,7 +83,10 @@ class PostProcess:
         self.s_ds = data["s_ds"]
         self.bankruptcy_ds = data["bankruptcy_ds"]
         self.ds_list = data["ds_list"]
-        self.time_values = np.arange(self.time_steps)
+        if self.time_steps is not None:
+            self.time_values = np.arange(self.time_steps)
+        else: 
+            self.time_values = None
     
     
     def _skip_values(self, *variables):
@@ -473,3 +478,18 @@ class PostProcess:
             plt.show()
 
         return dominant_freqs, dominant_powers
+
+
+    def _worker_diversity(self):
+        # Get data
+        self._get_data(self.group_name)
+        # Skip values
+        time, workers = self._skip_values(self.time_values, self.w)
+        # Calculate the worker diversity
+        diversity_arr = np.zeros(len(time))
+        for i in range(len(time)):
+            p = workers[:, i] / np.sum(workers[:, i])
+            diversity = 1 / np.sum(p**2)
+            diversity_arr[i] = diversity
+        
+        return time, diversity_arr
