@@ -84,6 +84,7 @@ class RunWorkForce(MethodsWorkForce):
             group.attrs["rf"] = self.rf
             group.attrs["m"] = self.mutation_magnitude
             group.attrs["prob_expo"] = self.prob_exponent
+            group.attrs["s_min"] = self.salary_min
             
             
     def repeated_m_runs(self, N_repeat, m_values):
@@ -95,6 +96,7 @@ class RunWorkForce(MethodsWorkForce):
             for j in range(N_repeat):
                 print(f"iteration: {i*N_repeat + j+1}/{total_iterations}")
                 self.mutation_magnitude = m
+                # self.salary_min = m / 10
                 self._simulation()
                 mean_salary = np.mean(self.s_hist, axis=0)  # Over companies
                 mean_salary_arr[i, j, :] = mean_salary
@@ -107,10 +109,12 @@ class RunWorkForce(MethodsWorkForce):
                 data_group = file.create_group(self.group_name)
             if "repeated_m_runs" in data_group:
                 del data_group["repeated_m_runs"]
+                del data_group.attrs["m_repeated"]
             data_group.create_dataset("repeated_m_runs", data=mean_salary_arr)
             data_group.attrs["m_repeated"] = m_values
+            print(f"Stored repeated m runs in {self.group_name}")
+        
             
-
     def multiple_s_min_runs(self, s_min_list):
         """Generate data for different s_min values.
 
