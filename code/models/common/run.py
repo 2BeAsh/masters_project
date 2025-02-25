@@ -40,10 +40,10 @@ class RunWorkForce(MethodsWorkForce):
         super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods, time_steps, seed)
 
 
-    def store_data_in_group(self):
+    def store_data_in_group(self, print_info=True):
         # Run simulation to get data
         self.group_name = self._get_group_name()
-        print(f"Storing data in {self.group_name}")
+        if print_info: print(f"Storing data in {self.group_name}")
         self._simulation()
                 
         with h5py.File(file_path, "a") as file:
