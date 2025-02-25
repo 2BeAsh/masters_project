@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.signal import find_peaks, savgol_filter
 from scipy.ndimage import uniform_filter1d
-import scipy.special as special
+import scipy.special
 import scipy.signal
 import matplotlib.pyplot as plt
 import h5py
@@ -236,8 +236,8 @@ class PostProcess:
             # Ensure only positive values
             x = x[x > 0]
 
-            gamma1 = p * (b1**a1 / special.gamma(a1)) * x**(a1 - 1) * np.exp(-b1 * x)
-            gamma2 = (1 - p) * (b2**a2 / special.gamma(a2)) * x**(a2 - 1) * np.exp(-b2 * x)
+            gamma1 = p * (b1**a1 / scipy.special.gamma(a1)) * x**(a1 - 1) * np.exp(-b1 * x)
+            gamma2 = (1 - p) * (b2**a2 / scipy.special.gamma(a2)) * x**(a2 - 1) * np.exp(-b2 * x)
             return gamma1 + gamma2
         
         
@@ -371,11 +371,13 @@ class PostProcess:
         plt.show()
     
     
-    def running_KDE(self, x_data: str, bandwidth=None, eval_points=100, kernel="gaussian", data_lim=None):
+    def running_KDE(self, x_data: str, bandwidth=None, eval_points=100, kernel="gaussian", data_lim=None, gname=None):
         """Loop over all time steps and calculate the KDE for each time step.
         """
         # Get data
-        self._get_data(self.group_name)
+        if gname is None:
+            gname = self.group_name
+        self._get_data(gname)
         add_time = 0
         if x_data == "salary":
             x_data = self.s
@@ -467,6 +469,11 @@ class PostProcess:
             _type_: _description_
         """
         freqs, psd = self._compute_PSD(data, fs=fs)
+        
+        if freqs.size == 0:
+            print("No data to compute PSD, returning NaN arrays")
+            return np.array([np.nan]*number_of_frequencies), np.array([np.nan]*number_of_frequencies)
+        
         dominant_freqs, dominant_powers = self._find_dominant_frequencies(freqs, psd, number_of_frequencies)
         
         if show_power_plot:
@@ -480,9 +487,11 @@ class PostProcess:
         return dominant_freqs, dominant_powers
 
 
-    def _worker_diversity(self):
+    def _worker_diversity(self, gname=None):
+        if gname is None:
+            gname = self.group_name
         # Get data
-        self._get_data(self.group_name)
+        self._get_data(gname)
         # Skip values
         time, workers = self._skip_values(self.time_values, self.w)
         # Calculate the worker diversity
@@ -493,3 +502,87 @@ class PostProcess:
             diversity_arr[i] = diversity
         
         return time, diversity_arr
+    
+    
+    def _mu_return_fit(self, return_data):
+        # Define PDFs to fit
+        
+        def _gaussian(x, mu, sigma):
+            return 1 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-1/2 * (x - mu)**2 / sigma**2)
+        
+        def _student(x, nu):
+            # Coefficient in front of the PDF
+            coeff = scipy.special.gamma((nu + 1.0) / 2.0) / (
+                np.sqrt(nu * np.pi) * scipy.special.gamma(nu / 2.0)
+            )
+            # (1 + (x^2 / nu))^(-(nu+1)/2)
+            inside = 1.0 + (np.power(x, 2) / nu)
+            power_term = np.power(inside, -((nu + 1.0) / 2.0))
+            return coeff * power_term  
+        
+        
+        # Estimate initial values and perform minimization
+        p0_list = [0.01, 0.25]  # Gaussian
+        par, _ = general_functions.minimize_llh(_gaussian, return_data, p0=p0_list)
+
+        p0_student_list = [300]  # Student t
+        par_student, _ = general_functions.minimize_llh(_student, return_data, p0=p0_student_list)
+        
+        p0_lst_list = [300, 0.01, 0.25]  # Location transformed student t
+        par_lst, _ = general_functions.minimize_llh(self.student_t_pdf_loc_scale, return_data, p0=p0_lst_list)
+        
+        # Calculate x and y values for plotting
+        x_values = np.linspace(np.min(return_data), np.max(return_data), 500)
+        y_gauss = _gaussian(x_values, *par)
+        y_student = _student(x_values, *par_student)
+        y_lst = self.student_t_pdf_loc_scale(x_values, *par_lst)
+        
+        # Print the fitted values for Gaussian
+        mu1, sigma1 = par
+        print(f"Gaussian: mu = {mu1:.2f}, sigma = {sigma1:.2f}, ")
+        
+        # Print the fitted values for student t 
+        nu_student = par_student[0]
+        print(f"Student t: nu = {nu_student:.2f}")
+        
+        # Print the fitted values for location transformed student t
+        nu_lst, mu_lst, sigma_lst = par_lst
+        print(f"Location transformed Student t: nu = {nu_lst:.2f}, mu = {mu_lst:.2f}, sigma = {sigma_lst:.2f}")
+        
+        return x_values, y_gauss, y_student, y_lst
+
+
+    def student_t_pdf_loc_scale(self, x, nu, mu, sigma):
+        """
+        Computes the PDF of the location-scale Student's t-distribution at value x,
+        with degrees of freedom nu, location mu, and scale sigma.
+
+        Returns
+        -------
+        pdf : float or numpy.ndarray
+            The value(s) of the Student's t-distribution PDF at x with the
+            specified location and scale. The shape matches the shape of x
+            if x is an array.
+        """
+        # Ensure sigma is positive
+        if sigma <= 0:
+            raise ValueError("Scale parameter sigma must be positive.")
+
+        # Coefficient in front of the PDF
+        coeff = scipy.special.gamma((nu + 1.) / 2.) / (
+            np.sqrt(nu * np.pi) * scipy.special.gamma(nu / 2.) * sigma
+        )
+
+        # Shift and scale transformation: (x - mu) / sigma
+        z = (x - mu) / sigma
+        
+        # Core term: (1 + (z^2 / nu))^( - (nu + 1) / 2 )
+        inside = 1.0 + (z**2) / nu
+        power_term = inside ** ( - (nu + 1.) / 2. )
+        
+        return coeff * power_term
+    
+    
+    def _asset_return(self, data, time_period):
+        r = np.log(data[time_period:]) - np.log(data[:-time_period])
+        return r
