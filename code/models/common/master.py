@@ -27,7 +27,7 @@ class WorkForce():
     
             
     def _get_group_name(self):
-        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_snew{self.mutation_method}_rf{self.rf_name}_ProbExpo{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}"
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_rf{self.rf_name}_alpha{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}"
     
     
     def _initialize_market_variables(self):
