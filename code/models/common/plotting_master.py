@@ -4,6 +4,8 @@ import matplotlib.animation as animation
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 import functools
 import numpy as np
+import scipy.optimize
+import scipy.stats
 from run import dir_path_image
 from postprocess import PostProcess
 
@@ -425,7 +427,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             fig, ax = plt.subplots(figsize=(12, 8))
             for i, (mean_salary, expo) in enumerate(zip(mean_salary_list, prob_expo_list)):
                 ax.plot(time_vals, mean_salary, label=f"Exponent = {int(expo)}", c=c_list[i])
-            ax.set(title="Mean salary for different probability exponents", xlabel="Time", ylabel="Price", yscale="linear")
+            ax.set(xlabel="Time", ylabel="Price", yscale="linear")
+            ax.set_title("Mean salary for different probability exponents")
             ax.grid()
             self._add_legend(ax, ncols=len(group_name_list)//2, y=0.9)
             save_ax = ax
@@ -438,17 +441,17 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             
             for i, (mean_salary, expo) in enumerate(zip(mean_salary_list, prob_expo_list)):
                 ax = axs[i//ncols, i%ncols]
-                ax.plot(time_vals, mean_salary, c=c_list[i])
-                ax.set_title(fr"Exponent = {int(expo)}", fontsize=8)
+                ax.plot(time_vals, mean_salary, c=self.colours["salary"])
+                ax.set_title(fr"$\alpha =$ {int(expo)}")
                 ax.set(yscale="linear")
                 ax.grid()
 
-            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
-            subplot_spec = ax.get_subplotspec()
-            if subplot_spec.is_last_row():
-                ax.set_xlabel("Time")
-            if subplot_spec.is_first_col():
-                ax.set_ylabel("Log Price")
+                # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+                subplot_spec = ax.get_subplotspec()
+                if subplot_spec.is_last_row():
+                    ax.set_xlabel("Time")
+                if subplot_spec.is_first_col():
+                    ax.set_ylabel("Price")
             save_ax = axs[0, 0]
         
         # Text, save show,
@@ -621,11 +624,15 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         plt.show()
     
     
-    def _load_multiple_variable_repeated(self, group_name_arr, data_name: str):
+    def _load_multiple_variable_repeated(self, group_name_arr, data_name: str) -> tuple:
         """Loop over the 2d array group_name_arr and store the mean salary for each group name in an array.
 
         Args:
             group_name_arr (np.ndarray): 2d array with group names. Rows are variable values, columns are repeated runs.
+            
+        Returns:
+            data_arr (np.ndarray): Array with the data values for each group name.
+            variable_dict (dict): Dictionary with the variable values for each group name.
         """
         assert data_name in ["salary", "mu"]
         
@@ -757,7 +764,152 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         self._text_save_show(fig, ax, "ds_frequency", xtext=0.05, ytext=0.75, fontsize=7)
 
 
-    def plot_var_frequency(self, group_name_list: list, var_name: str, data_name: str):
+    def get_PSD_freq_multiple_var(self, group_name_arr: list, var_name: str, data_name: str):
+        """Repeatable measurements of the frequency using PSD for a variable.
+
+        Args:
+            group_name_arr (list): _description_
+            var_name (str): _description_
+            data_name (str): _description_
+
+        Returns:
+            tuple: mean_freq1, std_freq1, mean_freq2, std_freq2, var_vals
+        """
+        # Load data        
+        self._get_data(group_name_arr[0, 0])
+        data_arr, variable_dict = self._load_multiple_variable_repeated(group_name_arr, data_name)
+        var_vals = variable_dict[var_name]
+        N_variable_values = data_arr.shape[0]
+        N_repeats = data_arr.shape[1]
+        
+        # For each variable value, loop over repeats and store the PSD frequency
+        freq1_arr = np.zeros((N_variable_values, N_repeats))  # Dominant PSD frequency
+        freq2_arr = np.zeros((N_variable_values, N_repeats))  # Second dominant PSD frequency
+
+        for i in range(N_variable_values):
+            for j in range(N_repeats):
+                data_set = data_arr[i, j]
+                # If the dataset contains Inf or NaNs, store NaN frequencies
+                if np.any(np.isinf(data_set)) or np.any(np.isnan(data_set)):
+                    freq1_arr[i, j] = np.nan
+                    freq2_arr[i, j] = np.nan
+                    continue
+                
+                # Calculate and store PSD frequency
+                freq, psd = self._PSD_on_dataset(data_set, number_of_frequencies=2, fs=1)
+                freq1_arr[i, j] = freq[0]
+                freq2_arr[i, j] = freq[1]
+
+        # Calculate mean and std of the PSD frequencies, ignoring NaNs
+        mean_freq1 = np.nanmean(freq1_arr, axis=1)
+        std_freq1 = np.nanstd(freq1_arr, axis=1, ddof=1) / np.sqrt(N_repeats)
+        mean_freq2 = np.nanmean(freq2_arr, axis=1)
+        std_freq2 = np.nanstd(freq2_arr, axis=1, ddof=1) / np.sqrt(N_repeats)
+        
+        # Check if any of the errors have almost-0 values, if so, give them the std of the mean as error
+        std_freq1 = np.where(std_freq1<1e-8, np.std(mean_freq1), std_freq1)
+        
+        return mean_freq1, std_freq1, mean_freq2, std_freq2, var_vals
+
+
+    def linear_fit(self, x, y, std_y, print_results=False):
+        # Remove NaNs
+        is_nan_idx = np.isnan(y)
+        x = x[~is_nan_idx]
+        y = y[~is_nan_idx]
+        std_y = std_y[~is_nan_idx]
+        
+        # Define linear function
+        linear = lambda x, a, b: a * x + b
+        # Perform fit
+        p0 = [0.15, 0.05]
+        par, cov = scipy.optimize.curve_fit(linear, x, y, p0=p0, sigma=std_y)
+        par_std = np.sqrt(np.diag(cov))
+        # Get p-value
+        chi2_val = general_functions.chi2(y, linear(x, *par), std_y)
+        Ndof = len(x) - len(par)
+        p_value = scipy.stats.chi2.sf(chi2_val, Ndof)
+        
+        x_fit = np.linspace(np.min(x), np.max(x), 200)
+        y_fit = par[0] * x_fit + par[1]
+        
+        if print_results:
+            # Print the fit parameters with their uncertainty, and the p-value
+            fit_text = fr"$a = $ {par[0]:.3f} $\pm$ {par_std[0]:.3f}, $b = $ {par[1]:.2f} $\pm$ {par_std[1]:.5f}, $p=${p_value:.8f}"
+            print(fit_text)
+            print(f"P(chi2={chi2_val:.2f}, Ndof={Ndof}) = {p_value:.4f}")
+        
+        prop_dict = {"a": par[0], "b": par[1], "std_a": par_std[0], "std_b": par_std[1], "p_value": p_value, "Ndof": Ndof, "chi2": chi2_val}
+        
+        return x_fit, y_fit, prop_dict
+
+
+    def _get_par_from_name(self, gname: str):
+        # Get alpha, N and W from gname
+        # Get the value of alpha by taking the first letter of the string just after alpha, as alpha is always a single digit
+        alpha_value = gname.split("alpha")[1][0]
+        # N and W maybe be multiple digits, so we need to split the string by "N", take the first element, then split by "_" and take the first element
+        N_value = gname.split("N")[1].split("_")[0]
+        W_value = gname.split("W")[1].split("_")[0]
+        
+        # Combine all values in a dictionary
+        par_dict = {"alpha": alpha_value, "N": N_value, "W": W_value}
+        return par_dict
+
+
+    def plot_ds_frequency_multiple_datasets(self, group_name_tensor, data_name: str):
+        """Plot multiple datasets (such as alpha=1, alpha=4) on the same plot, each with their own frequency and linear fit.
+
+        Args:
+            group_name_tensor (_type_): _description_
+            data_name (str): _description_
+        """
+        # For each dataset in group_name_tensor, find the frequency of the oscillation in the data set and perform a linear fit to it.
+        # Plot all the frequencies and fits on the same plot.
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 8))
+        fit_results = np.zeros((len(group_name_tensor), 2), dtype=object)
+        marker_list = general_functions.list_of_markers
+        color_list = general_functions.list_of_colors
+        for i, group_name_arr in enumerate(group_name_tensor):
+            mean_freq1, std_freq1, mean_freq2, std_freq2, var_list = self.get_PSD_freq_multiple_var(group_name_arr, "ds", data_name)
+            x_fit, y_fit, prop_dict = self.linear_fit(var_list, mean_freq1, std_freq1)
+            a, std_a, b, std_b, p = prop_dict["a"], prop_dict["std_a"], prop_dict["b"], prop_dict["std_b"], prop_dict["p_value"]
+            
+            # Get the alpha, N and W values from the group name
+            par_dict = self._get_par_from_name(group_name_arr[0, 0])
+            alpha, N, W = par_dict["alpha"], par_dict["N"], par_dict["W"]
+            
+            # Plot data
+            ax.errorbar(var_list, mean_freq1, yerr=std_freq1, c=color_list[i], fmt=marker_list[i], label=fr"$\alpha=${alpha}, $N=${N}, $W=${W}")
+            # ax.errorbar(var_list, mean_freq2, yerr=std_freq2, c=color_list[i], fmt=marker_list[-i-1], label=fr"Second frequency, $\alpha=${alpha}, $N=${N}, $W=${W}")
+            
+            # Plot fit
+            fit_label = fr"Fit, $a = {a:.3f} \pm {std_a:.3f}, b = {b:.2f} \pm {std_b:.5f}, p = {p:.4f}$"
+            ax.plot(x_fit, y_fit, ls="--", c=color_list[i], )#label=fit_label, )
+            fit_results[i, 0] = fit_label
+            fit_results[i, 1] = par_dict
+        
+        # Axis setup
+        ax.set(xlabel=r"$\Delta s$", ylabel="Frequency")
+        ax.grid()
+        ax.legend()
+        
+        # Text save show
+        self._text_save_show(fig, ax, f"ds_frequency_multiple_dataset", xtext=0.05, ytext=0.75, fontsize=8)
+        
+        # Print the fit results
+        for i in range(len(fit_results)):
+            fit_label = fit_results[i, 0]
+            par_dict = fit_results[i, 1]
+            print(f"System parameters: alpha = {par_dict['alpha']}, N = {par_dict['N']}, W = {par_dict['W']}")
+            print(fit_label)
+            print("")
+            
+
+
+    def plot_var_frequency(self, group_name_arr: list, var_name: str, data_name: str, points_to_exclude_from_fit=0, show_second_dominant_freq=False, show_fit_results=False):
         """Use the PSD to find the frequency of the oscillation in the data set for different var_name values.
 
         Args:
@@ -767,61 +919,71 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         """
         assert var_name in ["ds", "alpha"], f"var_name must be either 'ds' or 'alpha', not {var_name}"
         assert data_name in ["salary", "mu"], f"data_name must be either 'salary' or 'mu', not {data_name}"
+
+        # Load data        
+        self._get_data(group_name_arr[0, 0])
+        data_arr, variable_dict = self._load_multiple_variable_repeated(group_name_arr, data_name)
+        var_list = variable_dict[var_name]
+        N_variable_values = data_arr.shape[0]
+        N_repeats = data_arr.shape[1]
+        time_steps = data_arr.shape[2]
         
-        # Load data
-        self._get_data(group_name_list[0])
-        time_vals = np.arange(self.skip_values, self.time_steps)
-        data_list = np.zeros((len(group_name_list), len(time_vals)))
-        var_list = np.zeros(len(group_name_list))
+        # For each variable value, loop over repeats and store the PSD frequency
+        freq1_arr = np.zeros((N_variable_values, N_repeats))  # Dominant PSD frequency
+        freq2_arr = np.zeros((N_variable_values, N_repeats))  # Second dominant PSD frequency
+
+        for i in range(N_variable_values):
+            for j in range(N_repeats):
+                freq, psd = self._PSD_on_dataset(data_arr[i, j], number_of_frequencies=2, fs=1)
+                freq1_arr[i, j] = freq[0]
+                freq2_arr[i, j] = freq[1]
+
+        # Calculate mean and std of the PSD frequencies
+        mean_freq1 = np.mean(freq1_arr, axis=1)
+        std_freq1 = np.std(freq1_arr, axis=1, ddof=1) / np.sqrt(N_repeats)
+        mean_freq2 = np.mean(freq2_arr, axis=1)
+        std_freq2 = np.std(freq2_arr, axis=1, ddof=1) / np.sqrt(N_repeats)
         
-        for i, gname in enumerate(group_name_list):
-            # Get values
-            self._get_data(gname)
-            
-            if data_name == "salary":
-                data = np.mean(self.s[:, self.skip_values:], axis=0)
-            elif data_name == "mu":
-                data = self.mu[self.skip_values:]
-            if var_name == "ds":
-                var_value = self.ds
-            elif var_name == "alpha":
-                var_value = self.prob_expo
-            
-            # Append values
-            data_list[i] = data
-            var_list[i] = var_value
+        # Check if any of the errors have almost-0 values, if so, give them the std of the mean as error
+        std_freq1 = np.where(std_freq1<1e-8, np.std(mean_freq1), std_freq1)
         
-        # For each data set, using PSD find the frequency of the oscillation by taking the max frequency of the two most dominant frequencies
-        freq_list = np.zeros(len(var_list))
-        freq2_list = np.zeros(len(var_list))
-        for i, mean_salary in enumerate(data_list):
-            freq, psd = self._PSD_on_dataset(mean_salary, number_of_frequencies=2, fs=1)
-            # freq_list has the most prominent frequency, and freq2_list has the second most prominent frequency
-            freq_list[i] = freq[0]
-            freq2_list[i] = freq[1]
+        # Linear function defined using lambda
+        linear = lambda x, a, b: a * x + b
+        p0 = [0.15, 0.05]
+        par, cov = scipy.optimize.curve_fit(linear, var_list, mean_freq1, p0=p0, sigma=std_freq1)
+        par_std = np.sqrt(np.diag(cov))
+        # Get p-value
+        chi2_val = general_functions.chi2(mean_freq1, linear(var_list, *par), std_freq1)
+        Ndof = len(var_list) - len(par)
+        p_value = scipy.stats.chi2.sf(chi2_val, Ndof)
         
-        # Linear fit to dominant frequency data        
-        par, cov = np.polyfit(var_list, freq_list, deg=1, cov=True)
-        std = np.sqrt(np.diag(cov))
-        x_fit = np.linspace(np.min(var_list), np.max(var_list), 100)
+        x_fit = np.linspace(np.min(var_list), np.max(var_list), 200)
         y_fit = par[0] * x_fit + par[1]
         
         # Create figure
         fig, ax = plt.subplots(figsize=(12, 8))
-        ax.plot(var_list, freq_list, "o", label="Most prominent frequency")
-        ax.plot(var_list, freq2_list, "x", label="Second most prominent frequency")
-        ax.plot(x_fit, y_fit, ls="--", label=r"Linear fit")
-        ax.set(xlabel=f"{var_name}", ylabel="Frequency", title=fr"{data_name} oscillation frequency")
-        self._add_legend(ax, ncols=3, x=0.5, y=0.95)
+        ax.errorbar(var_list, mean_freq1, yerr=std_freq1, fmt="o", label="Most prominent frequency")
+        if show_second_dominant_freq: ax.errorbar(var_list, mean_freq2, yerr=std_freq2, fmt="x", label="Second most prominent frequency")
+        ax.plot(x_fit, y_fit, ls="--", c="k", label=r"Linear fit")
+        if var_name == "ds":
+            ax.set(xlabel=r"$\Delta s$", ylabel="Frequency", )
+        elif var_name == "alpha":
+            ax.set(xlabel=r"$\alpha$", ylabel="Frequency", )
+        title=fr"{data_name} oscillation frequency"
+        # ax.set_title(title)
+        print(title)
+        
+        self._add_legend(ax, ncols=3, x=0.5, y=0.9, fontsize=14)
         ax.grid()
         
         # Print the fit parameters with their uncertainty
-        fit_text = fr"$a = $ {par[0]:.3f} $\pm$ {std[0]:.3f}, $b = $ {par[1]:.2f} $\pm$ {std[1]:.5f}"
-        ax.text(0.95, 0.85, fit_text, transform=ax.transAxes, fontsize=8, horizontalalignment="right")
+        fit_text = fr"$a = $ {par[0]:.3f} $\pm$ {par_std[0]:.3f}, $b = $ {par[1]:.2f} $\pm$ {par_std[1]:.5f}, $p=${p_value:.8f}"
+        if show_fit_results: ax.text(0.95, 0.85, fit_text, transform=ax.transAxes, fontsize=8, horizontalalignment="right")
         print(fit_text)
+        print(f"P(chi2={chi2_val:.2f}, Ndof={Ndof}) = {p_value:.4f}")
         
         # Text, save show,
-        self._text_save_show(fig, ax, f"frequency_{var_name}_{data_name}", xtext=0.05, ytext=0.75, fontsize=7)
+        self._text_save_show(fig, ax, f"frequency_{var_name}_{data_name}", xtext=0.05, ytext=0.75, fontsize=8)
 
 
     def plot_ds_power_spectrum(self, group_name_list):
@@ -1702,32 +1864,26 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         """Plot the worker diversity for different alpha values, each on their own subplot
         """       
         # Load data
-        self._get_data(group_name_list[0])
-        time_vals = np.arange(self.skip_values, self.time_steps)
         diversity_list = []
         alpha_list = []
         for gname in group_name_list:
             # Get values
             self._get_data(gname)
-            print(f"Calculating diversity for {gname}")
-            print(self.prob_expo)
-            # time_vals, diversity = self._worker_diversity()
-            
+            time_vals, diversity = self._worker_diversity(gname)
             # Append values
-            # diversity_list.append(diversity)
-            diversity_list.append(np.mean(self.s[:, self.skip_values:], axis=0))
+            diversity_list.append(diversity)
             alpha_list.append(self.prob_expo)
         
         # Create figure
-        ncols = 2
-        nrows = (len(group_name_list) + ncols - 1) // ncols
+        nrows = 2
+        ncols = (len(group_name_list) + nrows - 1) // nrows
         fig, axs = plt.subplots(figsize=(12, 8), ncols=ncols, nrows=nrows)
         
         # Loop over axes
         for i in range(len(group_name_list)):
             ax = axs[i//ncols, i%ncols]
             ax.plot(time_vals, diversity_list[i], c=self.colours["diversity"])
-            ax.set_title(fr"$\alpha = {alpha_list[i]:.0f}$", fontsize=8)
+            ax.set_title(fr"$\alpha = {alpha_list[i]:.0f}$")
             ax.grid()
             
             # Axis labels
@@ -1739,3 +1895,196 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Text save show
         self._text_save_show(fig, axs[0, 0], "diversity_multiple_alpha", xtext=0.05, ytext=0.85, fontsize=6)
+        
+        
+    def plot_running_KDE_multiple_s_min(self, group_name_list, bandwidth_s=None, eval_points=100, s_lim=None, kernel="gaussian", show_mean=False, show_title=False):
+        figsize = (10, 8)
+        ncols = 2
+        nrows = (len(group_name_list) + ncols - 1) // ncols
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+
+        label_fontsize = 15
+        ticks_fontsize = 10
+        
+        self._get_data(group_name_list[0])
+        s_eval_arr = np.zeros((len(group_name_list), eval_points))
+        KDE_prob_arr = np.zeros((len(group_name_list), eval_points, self.time_steps-self.skip_values))
+        mu_arr = np.zeros((len(group_name_list), self.time_steps-self.skip_values))
+        s_min_arr = np.zeros(len(group_name_list))
+
+        def _get_KDE(gname):
+            # Load data
+            print(gname)
+            self._get_data(gname)
+            # KDE
+            s_eval, KDE_prob = self.running_KDE("salary", bandwidth_s, eval_points, kernel, s_lim, gname=gname)  # KDE probabilities
+            time_values, mu = self._skip_values(self.time_values, self.mu)  # Get mean salary and skip values
+            s_min = self.s_min
+            return s_eval, KDE_prob, time_values, mu, s_min
+
+        # Calculate data
+        for i, gname in enumerate(group_name_list):
+            s, KDE, time_values, mu, s_min = _get_KDE(gname)
+
+            s_eval_arr[i, :] = s
+            KDE_prob_arr[i, :, :] = KDE
+            mu_arr[i, :] = mu
+            s_min_arr[i] = s_min
+            
+
+        # Calculate minimum and maximum values for the colorbar
+        min_val = np.min(KDE_prob_arr)
+        max_val = np.max(KDE_prob_arr)
+
+        # Initialize im to None
+        im = None
+
+        def _plot_KDE(index):
+            nonlocal im  # Declare im as nonlocal to update it within the function
+            # Salary
+            ax = axs[index // ncols, index % ncols]
+            im = ax.imshow(KDE_prob_arr[index], aspect="auto", origin="lower",
+                        extent=[self.skip_values, self.time_steps, np.min(s_eval_arr[index]), np.max(s_eval_arr[index])],
+                        cmap="hot", vmin=min_val, vmax=max_val)
+            if show_mean:
+                ax.plot(time_values, mu_arr[index] / self.W, c="magenta", label=r"$\mu / W$", alpha=1, lw=0.6)
+            ax.tick_params(axis='both', which='major', labelsize=ticks_fontsize)
+
+            # Title
+            title = r"$s_\text{min} = $" + f"{s_min_arr[index]:.0e}"
+            ax.set_title(title, fontsize=label_fontsize)
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Wage")
+
+        # Run the plotting function
+        for i in range(len(group_name_list)):
+            _plot_KDE(i)
+
+        # Add a single colorbar for all subplots, stretch it to the full height of the figure
+        cbar = fig.colorbar(im, ax=axs, orientation='vertical',)# fraction=0.02, pad=0.04)
+        cbar.set_label(label="Frequency", fontsize=label_fontsize)
+        cbar.ax.tick_params(labelsize=0)  # Remove tick labels
+
+        # Text, save, show
+        self._text_save_show(fig, axs[0, 0], "running_KDE_multiple_s_min", xtext=0.05, ytext=0.95, fontsize=0)
+        
+        
+    def plot_mu_return(self, yscale):
+        """Plot the distribution of relative change in mu i.e. the return of the asset price.
+        """
+        # Load data
+        self._get_data(self.group_name)
+        mu,  = self._skip_values(self.mu)
+        
+        # Relative change in mu using log
+        r = np.log(mu[1:] / mu[:-1])  # return of asset price
+        
+        # Bin data
+        Nbins = int( 0.5 * np.sqrt(len(r)))
+        bins = np.linspace(np.min(r), np.max(r), Nbins)
+        counts, edges = np.histogram(r, bins=bins)
+        bin_width = edges[1] - edges[0]
+
+        # LLH fit to the distribution
+        x_fit, y_gauss, y_student, y_lst = self._mu_return_fit(r)
+
+        # Create figure
+        fig, ax_hist = plt.subplots(figsize=(12, 8))
+        
+        # Disitribution of returns
+        ax_hist.hist(edges[:-1], edges, weights=counts, color=self.colours["mu"], label="Data", density=True)
+        # Fits
+        ax_hist.plot(x_fit, y_gauss, c="k", label="Gaussian fit")
+        # ax_hist.plot(x_fit, y_student, c="grey", label="Student's t fit")
+        ax_hist.plot(x_fit, y_lst, c="gray", label="Loc. trans. Student t")
+
+        # Axis setup
+        ax_hist.set(xlabel="Return", ylabel=f"Probability density (bw={bin_width:.2f})", yscale=yscale)
+        ax_hist.grid()
+        self._add_legend(ax_hist, ncols=3)
+        
+        # Text, save, show
+        self._text_save_show(fig, ax_hist, "return", xtext=0.05, ytext=0.85, fontsize=6)
+                
+                
+    def plot_autocorr(self, time_period=1, max_lag=None):
+        # Get data and calculate autocorrelation
+        self._get_data(self.group_name)
+        lag_vals = np.arange(max_lag+1)  # Include endpoint
+        mu, = self._skip_values(self.mu)
+        r = self._asset_return(mu, time_period)
+        autocorr = general_functions.sample_autocorrelation(r, max_lag=max_lag)
+        r2 = np.abs(r)#r ** 2
+        autocorr_r2 = general_functions.sample_autocorrelation(r2, max_lag=max_lag)
+        
+        # Fit a power law to the r2 autocorrelation
+        
+        def _power_law(x, a, b):
+            return a * x ** (-b)
+        
+        par, cov = scipy.optimize.curve_fit(_power_law, lag_vals[1:], autocorr_r2[1:])  # Skip the first value because it is 1 
+        x_fit = np.linspace(1, max_lag, 100)
+        y_fit = _power_law(x_fit, *par)
+        
+        # Create figure
+        title_r1 = fr"$r_{{\tau = {time_period}}}(t)$"
+        title_r2 = fr"$|r_{{\tau = {time_period}}}(t)|$"
+        
+        fig, (ax, ax_r2) = plt.subplots(nrows=2)
+        ax.plot(lag_vals, autocorr, "--x", c=self.colours["mu"], lw=1)
+        ax.set(ylabel="Autocorrelation", title=title_r1)
+        ax.grid()
+        
+        # r^2
+        ax_r2.plot(lag_vals, autocorr_r2, "--x", c=self.colours["mu"], label="Data")
+        ax_r2.plot(x_fit, y_fit, label=f"Power law fit, a={par[1]:.2f}", c="k", lw=1)
+        ax_r2.set(xlabel="Lag", ylabel="Autocorrelation", title=title_r2)
+        ax_r2.grid()
+        
+        self._add_legend(ax_r2, x=0.5, y=0.85, ncols=2, fontsize=7)
+        
+        # Text, save, show
+        self._text_save_show(fig, ax, "autocorr", xtext=0.05, ytext=0.85, fontsize=6)
+        
+
+    def plot_mu_return_different_time(self, time_period_list, yscale):
+        """Calculate and plot the return for different time periods in the asset return calculation, together with a standard Gaussian.
+        """
+        # Load data
+        self._get_data(self.group_name)
+        mu,  = self._skip_values(self.mu)
+        
+        # Get bins
+        Nbins = int( 0.5 * np.sqrt(len(mu)))
+        marker_list = general_functions.list_of_markers
+        def plot_r(axis, i):
+            # Calculate r and normalize it
+            r = self._asset_return(mu, time_period_list[i])
+            counts, edges = np.histogram(r, bins=Nbins, density=True)
+            # Plot
+            axis.plot(edges[:-1], counts, marker=marker_list[i], markersize=10, label=fr"$\tau = $ {time_period_list[i]}", lw=1)
+            
+        # Create figure
+        fig, ax_hist = plt.subplots(figsize=(12, 8))
+        # Plot the Gaussian
+        gauss_std = 0.5
+        gauss_mu = 0
+        x_gauss = np.linspace(-3*gauss_std, 3*gauss_std, 200)  # 3 standard ddviations
+        y_gauss = scipy.stats.norm.pdf(x_gauss, loc=gauss_mu, scale=gauss_std)
+        # Plot the return values
+        ax_hist.plot(x_gauss, y_gauss, label="Gaussian", lw=2)
+        for i in range(len(time_period_list)):
+            plot_r(ax_hist, i)
+
+        # Axis setup
+        ax_hist.set(xlabel="Return", ylabel=f"Probability density", yscale=yscale)
+        ax_hist.grid()
+        self._add_legend(ax_hist, ncols=len(time_period_list)+1)
+        
+        # Text, save, show
+        self._text_save_show(fig, ax_hist, "return_different_time", xtext=0.05, ytext=0.85, fontsize=6)
