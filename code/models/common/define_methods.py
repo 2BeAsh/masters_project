@@ -87,10 +87,10 @@ class MethodsWorkForce(WorkForce):
     def _transaction(self):
         # Pick the indices of the companies that will sell
         # Only w>0 companies perform transactions
-        # number_of_companies_selling = np.sum(self.w > 0)
-        # idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
+        number_of_companies_selling = np.sum(self.w > 0)
+        idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
         
-        idx_companies_selling = np.random.choice(np.arange(self.N), size=self.N, replace=True)
+        # idx_companies_selling = np.random.choice(np.arange(self.N), size=self.N, replace=True)
                         
         # Find which companies that sells and how many times they do it
         idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
