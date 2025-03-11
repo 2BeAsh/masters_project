@@ -109,10 +109,95 @@ class PostProcess:
             # var is a 1dim array
             else:
                 size_reduced_arrays.append(var[self.skip_values:])
-            
-        return tuple(size_reduced_arrays)
         
-            
+        if len(size_reduced_arrays) == 1:
+            return size_reduced_arrays[0]
+        
+        return tuple(size_reduced_arrays)
+
+
+    def _get_par_from_name(self, gname: str):
+        # Get alpha, N and W from gname
+        # Get the value of alpha by taking the first letter of the string just after alpha, as alpha is always a single digit
+        alpha_value = gname.split("alpha")[1][0]
+        # N and W maybe be multiple digits, so we need to split the string by "N", take the first element, then split by "_" and take the first element
+        N_value = gname.split("N")[1].split("_")[0]
+        W_value = gname.split("W")[1].split("_")[0]
+        
+        # Combine all values in a dictionary
+        par_dict = {"alpha": alpha_value, "N": N_value, "W": W_value}
+        return par_dict
+    
+    
+    def _axis_labels_outer(self, axis, x_label, y_label, remove_y_ticks=True, remove_x_ticks=True):
+        subplot_spec = axis.get_subplotspec()
+        if subplot_spec.is_first_col():
+            axis.set_ylabel(y_label)
+        elif remove_y_ticks:
+            axis.set_yticklabels([]) 
+        if subplot_spec.is_last_row():
+            axis.set_xlabel(x_label)
+        elif remove_x_ticks:
+            axis.set_xticklabels([])
+
+
+    def _axis_ticks_and_labels(self, axis, x_ticks, y_ticks, x_labels, y_labels, x_dtype=None, y_dtype=None):
+        """Given an axis, set the ticks and labels for the x and y axis.
+        
+        Ticks that are in x_labels (or y_labels) are set as major ticks with labels,
+        while ticks not in those lists are set as minor ticks (without labels).
+
+        Args:
+            axis: The Matplotlib axis to modify.
+            x_ticks (list of numbers): Tick positions for the x axis.
+            y_ticks (list of numbers): Tick positions for the y axis.
+            x_labels (list): Tick positions (a subset of x_ticks) that should have labels.
+            y_labels (list): Tick positions (a subset of y_ticks) that should have labels.
+            x_dtype (str, optional): "int" for integer formatting on x axis.
+            y_dtype (str, optional): "int" for integer formatting on y axis.
+        """
+        # Process x-axis ticks:
+        major_x = []
+        major_x_labels = []
+        minor_x = []
+        for tick in x_ticks:
+            if tick in x_labels:
+                major_x.append(tick)
+                if x_dtype == "int":
+                    major_x_labels.append(f"{int(tick)}")
+                else:
+                    major_x_labels.append(f"{tick}")
+            else:
+                minor_x.append(tick)
+        
+        # Process y-axis ticks:
+        major_y = []
+        major_y_labels = []
+        minor_y = []
+        for tick in y_ticks:
+            if tick in y_labels:
+                major_y.append(tick)
+                if y_dtype == "int":
+                    major_y_labels.append(f"{int(tick)}")
+                else:
+                    major_y_labels.append(f"{tick}")
+            else:
+                minor_y.append(tick)
+        
+        # Set major ticks and labels for the x-axis
+        axis.set_xticks(major_x)
+        axis.set_xticklabels(major_x_labels)
+        # Set minor ticks for the x-axis (by default, no labels are shown for minor ticks)
+        axis.set_xticks(minor_x, minor=True)
+        
+        # Set major ticks and labels for the y-axis
+        axis.set_yticks(major_y)
+        axis.set_yticklabels(major_y_labels)
+        # Set minor ticks for the y-axis
+        axis.set_yticks(minor_y, minor=True)
+
+
+
     def time_from_negative_income_to_bankruptcy(self, skip_values, show_plot):
         """For each company:
             - Find all times of bankruptcy using find_peaks to avoid counting multiple bankruptcies due to bad salary choice.
@@ -504,7 +589,17 @@ class PostProcess:
         return time, diversity_arr
     
     
-    def _mu_return_fit(self, return_data):
+    def _return_fit(self, return_data):
+        """Fits Gaussian and location transformed Student's t-distributions to the given data and returns the fitted values.
+        Parameters:
+            return_data (np.ndarray): The data to fit the distributions to.
+        Returns:
+            tuple: A tuple containing:
+                - x_values (np.ndarray): The x values for plotting the fitted distributions.
+                - y_gauss (np.ndarray): The y values of the fitted Gaussian distribution.
+                - None: Placeholder for the Student's t-distribution (currently not used).
+                - y_lst (np.ndarray): The y values of the fitted location transformed Student's t-distribution.
+        """
         # Define PDFs to fit
         
         def _gaussian(x, mu, sigma):
@@ -526,15 +621,14 @@ class PostProcess:
         par, _ = general_functions.minimize_llh(_gaussian, return_data, p0=p0_list)
 
         p0_student_list = [300]  # Student t
-        par_student, _ = general_functions.minimize_llh(_student, return_data, p0=p0_student_list)
-        
-        p0_lst_list = [300, 0.01, 0.25]  # Location transformed student t
+        # par_student, _ = general_functions.minimize_llh(_student, return_data, p0=p0_student_list)
+        p0_lst_list = [2.5, 0.01, 0.06]  # Location transformed student t
         par_lst, _ = general_functions.minimize_llh(self.student_t_pdf_loc_scale, return_data, p0=p0_lst_list)
         
         # Calculate x and y values for plotting
         x_values = np.linspace(np.min(return_data), np.max(return_data), 500)
         y_gauss = _gaussian(x_values, *par)
-        y_student = _student(x_values, *par_student)
+        # y_student = _student(x_values, *par_student)
         y_lst = self.student_t_pdf_loc_scale(x_values, *par_lst)
         
         # Print the fitted values for Gaussian
@@ -542,14 +636,14 @@ class PostProcess:
         print(f"Gaussian: mu = {mu1:.2f}, sigma = {sigma1:.2f}, ")
         
         # Print the fitted values for student t 
-        nu_student = par_student[0]
-        print(f"Student t: nu = {nu_student:.2f}")
+        # nu_student = par_student[0]
+        # print(f"Student t: nu = {nu_student:.2f}")
         
         # Print the fitted values for location transformed student t
         nu_lst, mu_lst, sigma_lst = par_lst
         print(f"Location transformed Student t: nu = {nu_lst:.2f}, mu = {mu_lst:.2f}, sigma = {sigma_lst:.2f}")
         
-        return x_values, y_gauss, y_student, y_lst
+        return x_values, y_gauss, None, y_lst
 
 
     def student_t_pdf_loc_scale(self, x, nu, mu, sigma):
@@ -583,6 +677,63 @@ class PostProcess:
         return coeff * power_term
     
     
-    def _asset_return(self, data, time_period):
+    def _asset_return(self, data_name:str, time_period:int):
+        """_summary_
+
+        Args:
+            data_name (str): What variable to use for the return calculation. Must be "mu", "capital_sum" or "capital_individual_mean".
+            time_period (int): Shift in time for the return calculation, equal to tau in: log(p(t + tau)) - log(p(t)).
+
+        Returns:
+            _type_: _description_
+        """
+        # Get data
+        if data_name == "mu":
+            data = self.mu
+        elif data_name == "capital_sum":
+            capital = -self.d
+            data = np.sum(capital, axis=0)
+        elif data_name == "capital_individual_mean":
+            # Individual capital has an extra dimension and the calculation must be done seperately
+            data = -self.d
+            data = self._skip_values(data)
+            data[data < 1e-10] = 1e-10
+            r_individual = np.log(data[:, time_period:]) - np.log(data[:, :-time_period])
+            r = np.mean(r_individual, axis=0)
+            return r
+        elif data_name == "capital_individual_all":
+            # Individual capital has an extra dimension and the calculation must be done seperately
+            data = -self.d
+            data = self._skip_values(data)
+            data[data < 1e-10] = 1e-10
+            r_individual = np.log(data[:, time_period:]) - np.log(data[:, :-time_period])
+            r = np.ravel(r_individual)
+            return r
+        else:
+            print(f"{data_name} is an invalid data_name, must be 'mu', 'capital_sum', 'capital_individual_all' or 'capital_individual_mean'")
+            return np.array([])
+
+        # Skip values
+        data = self._skip_values(data)
+        # Replace 0 values with a very small number to avoid division by 0
+        data[data < 1e-10] = 1e-10
+        # Calculate the return
         r = np.log(data[time_period:]) - np.log(data[:-time_period])
         return r
+
+
+    def _load_multiple_return_data(self, group_name_list):
+        """Given a set of parameters, load the corresponding data and return it.
+        """
+        r_arr = np.zeros((len(group_name_list), self.time_steps - self.skip_values))
+        
+        for i, gname in enumerate(group_name_list):
+            # Load data and store it in arrays
+            self._get_data(gname)
+            r = self._asset_return(data_name="capital_indiviual_mean", time_period=1)            
+            r_arr[i, : ] = r
+        
+        return r_arr
+    
+    
+    
