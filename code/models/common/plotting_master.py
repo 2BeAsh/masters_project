@@ -1,6 +1,7 @@
 import general_functions 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 import functools
 import numpy as np
@@ -42,6 +43,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             "time": general_functions.list_of_colors[5],
             "diversity": general_functions.list_of_colors[6],
             "mu": general_functions.list_of_colors[7],
+            "capital": general_functions.list_of_colors[8],
         }
     
     
@@ -58,7 +60,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         if (self.s != None).all():
             self.xlim = (self.skip_values, self.time_steps)
 
-    
+
     def plot_salary(self, show_spread=False):
         """Plot the mean salary and fraction who went bankrupt on twinx. Plot the spread (std/mean) on a subplot below it."""
         self._get_data(self.group_name)
@@ -70,7 +72,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Create figure
         nrows = 1 if not show_spread else 2
-        fig, ax0 = plt.subplots(nrows=nrows, figsize=(10, 10))
+        fig, ax0 = plt.subplots(nrows=nrows, figsize=(10, 8))
         
         if show_spread:
             ax0, ax1 = ax0
@@ -160,9 +162,9 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         """
         # Preprocess
         self._get_data(self.group_name)
-        self.d = -self.d
+        d = -self.d
         mean_debt = self.d.mean(axis=0)[self.skip_values:]
-        median_debt = np.median(self.d, axis=0)[self.skip_values:]
+        median_debt = np.median(d, axis=0)[self.skip_values:]
         mean_salary = self.s.mean(axis=0)[self.skip_values:]
         fraction_bankrupt = (self.went_bankrupt[self.skip_values:] / self.N)
         time_values = np.arange(self.skip_values, self.time_steps)
@@ -220,7 +222,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         time_values, mu, s = self._skip_values(self.time_values, self.mu, self.s)
         
         # Create figure
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(10, 5))
         ax.plot(time_values, mu/self.W - s.mean(axis=0), c=self.colours["mu"], label=r"$\mu / W - \hat{s}$", alpha=0.9)
         ax.tick_params(axis='y', labelcolor=self.colours["mu"])
         ax.set_ylabel(r"$\mu / W - \hat{s}$", color=self.colours["mu"])
@@ -232,6 +234,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         twinx.plot(time_values, diversity, label="Diversity", c=self.colours["diversity"], alpha=0.7)
         twinx.tick_params(axis='y', labelcolor=self.colours["diversity"])
         twinx.set_ylabel("Diversity", color=self.colours["diversity"])
+        twinx.set(ylim=(0, self.N))
         
         # Custom legend containing all lines
         # handles, labels = [], []
@@ -424,7 +427,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         c_list = general_functions.list_of_colors[:len(group_name_list)]
 
         if same_plot:
-            fig, ax = plt.subplots(figsize=(12, 8))
+            fig, ax = plt.subplots(figsize=(10, 5))
             for i, (mean_salary, expo) in enumerate(zip(mean_salary_list, prob_expo_list)):
                 ax.plot(time_vals, mean_salary, label=f"Exponent = {int(expo)}", c=c_list[i])
             ax.set(xlabel="Time", ylabel="Price", yscale="linear")
@@ -844,19 +847,6 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         return x_fit, y_fit, prop_dict
 
 
-    def _get_par_from_name(self, gname: str):
-        # Get alpha, N and W from gname
-        # Get the value of alpha by taking the first letter of the string just after alpha, as alpha is always a single digit
-        alpha_value = gname.split("alpha")[1][0]
-        # N and W maybe be multiple digits, so we need to split the string by "N", take the first element, then split by "_" and take the first element
-        N_value = gname.split("N")[1].split("_")[0]
-        W_value = gname.split("W")[1].split("_")[0]
-        
-        # Combine all values in a dictionary
-        par_dict = {"alpha": alpha_value, "N": N_value, "W": W_value}
-        return par_dict
-
-
     def plot_ds_frequency_multiple_datasets(self, group_name_tensor, data_name: str):
         """Plot multiple datasets (such as alpha=1, alpha=4) on the same plot, each with their own frequency and linear fit.
 
@@ -868,10 +858,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # Plot all the frequencies and fits on the same plot.
         
         # Create figure
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(10, 5))
         fit_results = np.zeros((len(group_name_tensor), 2), dtype=object)
-        marker_list = general_functions.list_of_markers
+        marker_list = ["x", "+", "*", ".", "h", "d"]  # general_functions.list_of_markers
         color_list = general_functions.list_of_colors
+        number_of_markers = len(marker_list)
+        shift_factor = 0.00
+        var_shift_factor_list = np.linspace(-shift_factor, shift_factor, len(group_name_tensor))   # To prevent all points being on top of each other, shift their x-values a tiny bit
+        
         for i, group_name_arr in enumerate(group_name_tensor):
             mean_freq1, std_freq1, mean_freq2, std_freq2, var_list = self.get_PSD_freq_multiple_var(group_name_arr, "ds", data_name)
             x_fit, y_fit, prop_dict = self.linear_fit(var_list, mean_freq1, std_freq1)
@@ -880,21 +874,26 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             # Get the alpha, N and W values from the group name
             par_dict = self._get_par_from_name(group_name_arr[0, 0])
             alpha, N, W = par_dict["alpha"], par_dict["N"], par_dict["W"]
+
+            # To prevent all points being on top of each other, shift their x-values a tiny bit. Go from 98% of the width to 102% of the width
+            var_list_plot = var_list + var_shift_factor_list[i] * (var_list[-1] - var_list[0])
             
             # Plot data
-            ax.errorbar(var_list, mean_freq1, yerr=std_freq1, c=color_list[i], fmt=marker_list[i], label=fr"$\alpha=${alpha}, $N=${N}, $W=${W}")
+            ax.errorbar(var_list_plot, mean_freq1, yerr=std_freq1, c=color_list[i % number_of_markers], fmt=marker_list[-(i % number_of_markers)], 
+                        label=fr"$\alpha=${alpha}, $N=${N}, $W=${W}", markersize=8, alpha=0.9)
             # ax.errorbar(var_list, mean_freq2, yerr=std_freq2, c=color_list[i], fmt=marker_list[-i-1], label=fr"Second frequency, $\alpha=${alpha}, $N=${N}, $W=${W}")
             
             # Plot fit
             fit_label = fr"Fit, $a = {a:.3f} \pm {std_a:.3f}, b = {b:.2f} \pm {std_b:.5f}, p = {p:.4f}$"
-            ax.plot(x_fit, y_fit, ls="--", c=color_list[i], )#label=fit_label, )
+            ax.plot(x_fit, y_fit, ls="--", c=color_list[i % number_of_markers], )#label=fit_label, )
             fit_results[i, 0] = fit_label
             fit_results[i, 1] = par_dict
         
         # Axis setup
         ax.set(xlabel=r"$\Delta s$", ylabel="Frequency")
         ax.grid()
-        ax.legend()
+        ax.legend(ncols=2, bbox_to_anchor=(0.025, 0.975), loc="upper left", fontsize=12)
+        # self._add_legend(ax, ncols=2, x=0.4, y=0.85, fontsize=12)
         
         # Text save show
         self._text_save_show(fig, ax, f"ds_frequency_multiple_dataset", xtext=0.05, ytext=0.75, fontsize=8)
@@ -987,11 +986,15 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
 
 
     def plot_ds_power_spectrum(self, group_name_list):
+        
         # Load data
         self._get_data(group_name_list[0])
         time_vals = np.arange(self.skip_values, self.time_steps)
         mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
         ds_list = np.zeros(len(group_name_list))
+        N_list = np.zeros(len(group_name_list))
+        W_list = np.zeros(len(group_name_list))
+        alpha_list = np.zeros(len(group_name_list))
         for i, gname in enumerate(group_name_list):
             # Get values
             self._get_data(gname)
@@ -1000,6 +1003,11 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             # Append values
             mean_salary_list[i] = mean_salary
             ds_list[i] = ds
+            # Get the alpha, N and W values from the group name
+            par_dict = self._get_par_from_name(gname)
+            alpha_list[i] = par_dict["alpha"]
+            N_list[i] = par_dict["N"]
+            W_list[i] = par_dict["W"]
         
         psd_list = []
         freq_list = []
@@ -1016,7 +1024,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         for i, (psd, freq, ds) in enumerate(zip(psd_list, freq_list, ds_list)):
             ax = axs[i//ncols, i%ncols]
             ax.semilogy(freq, psd)
-            ax.set_title(f"ds = {ds:.3f}", fontsize=7)
+            title = fr"$\Delta s / s = {ds:.3f}$, $\alpha = {alpha_list[i]:.0f}$, $N = {N_list[i]:.0f}$, $W = {W_list[i]:.0f}$"
+            ax.set_title(title, fontsize=7)
             ax.grid()
 
             # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
@@ -1028,7 +1037,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
                 
             # Insert a zoomed in plot of the first peak
             axins = inset_axes(ax, "30%", "30%", loc="upper right")
-            axins.semilogy(freq, psd)
+            axins.plot(freq, psd, ".-")
+            axins.set(xscale="linear", yscale="log")
             # Determine limits
             peak_idx = np.argmax(psd)
             number_of_points_to_show = 20
@@ -1036,14 +1046,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             mask = np.logical_and(freq >= x1, freq <= x2)
             y1, y2 = np.min(psd[mask]), np.max(psd[mask])
             axins.set_xlim(x1, x2)
-            axins.set_ylim(y1, y2)
+            axins.set_ylim(y1, y2*1.05)
             axins.set_xticks([])
             axins.set_yticks([])
             mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.5")
         
-        fig.suptitle("Power Spectral Density of mean salary for different ds values")
+        # fig.suptitle("Power Spectral Density of mean salary for different ds values")
         # Text, save show,
-        self._text_save_show(fig, axs[0, 0], "ds_power_spectrum", xtext=0.05, ytext=0.75, fontsize=6)
+        self._text_save_show(fig, axs[0, 0], "ds_power_spectrum", xtext=0.05, ytext=0.75, fontsize=0)
 
 
     def plot_min_max_vs_alpha(self, group_name_arr, data_name: str):
@@ -1190,7 +1200,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         self._text_save_show(fig, axs[0, 0], "m_power_spectrum", xtext=0.05, ytext=0.75, fontsize=6)
         
 
-    def plot_N_W_ratio(self, group_name_list):
+    def plot_N_W_ratio(self, group_name_list, show_bankruptcy):
         """Plot the mean salary for different ds values, each on their own subplot
         """       
         # Load data
@@ -1215,20 +1225,34 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         N_W_ratio = W_list[0] / N_list[0]
         # Create figure
         # Calculate nrows and ncols
-        nrows = 2
-        ncols = (len(group_name_list) + nrows - 1) // nrows
+        # If there is less than 4 data sets, make 1 row
+        less_than_four_datasets = len(group_name_list) < 4
+        if less_than_four_datasets:
+            nrows = 1
+            ncols = len(group_name_list)
+        else:
+            nrows = 2
+            ncols = (len(group_name_list) + nrows - 1) // nrows
+
         fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
         
         for i, (mean_salary, bankruptcy, N, W) in enumerate(zip(mean_salary_list, bankruptcy_list, N_list, W_list)):
-            ax = axs[i//ncols, i%ncols]
-            twin_x = ax.twinx()
-            twin_x.plot(time_vals, bankruptcy, c=self.colours["bankruptcy"], alpha=0.5)
-            twin_x.set_ylabel("Fraction bankrupt", color=self.colours["bankruptcy"])
-            twin_x.tick_params(axis='y', labelcolor=self.colours["bankruptcy"])
-            
+            if len(group_name_list) == 1:
+                ax = axs
+            elif less_than_four_datasets:
+                ax = axs[i]
+            else:
+                ax = axs[i//ncols, i%ncols]
+                
+            if show_bankruptcy:
+                twin_x = ax.twinx()
+                twin_x.plot(time_vals, bankruptcy, c=self.colours["bankruptcy"], alpha=0.5)
+                twin_x.set_ylabel("Fraction bankrupt", color=self.colours["bankruptcy"])
+                twin_x.tick_params(axis='y', labelcolor=self.colours["bankruptcy"])
+                
             ax.plot(time_vals, mean_salary, c=self.colours["salary"])
             ax.set_title(fr"$W/N = {W:.0f}/{N:.0f}$", fontsize=8)
-            ax.set(yscale="log")
+            ax.set(yscale="linear", xlim=self.xlim)
             ax.grid()
 
             # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
@@ -1236,12 +1260,16 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             if subplot_spec.is_last_row():
                 ax.set_xlabel("Time")
             if subplot_spec.is_first_col():
-                ax.set_ylabel("Log Price")
-        
-        fig.suptitle(fr"Mean salary for $W/N =$ {N_W_ratio}")
+                ax.set_ylabel("Price")
         
         # Text, save show,
-        self._text_save_show(fig, axs[0, 0], "N_W_ratio", xtext=0.05, ytext=0.75, fontsize=6)
+        if len(group_name_list) == 1:
+            save_ax = axs
+        elif less_than_four_datasets:
+            save_ax = axs[0]
+        else:
+            save_ax = axs[0, 0]
+        self._text_save_show(fig, save_ax, "N_W_ratio", xtext=0.05, ytext=0.75, fontsize=6)
         
         
     def plot_N_var_W_const(self, group_name_list):
@@ -1252,25 +1280,39 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         time_vals = np.arange(self.skip_values, self.time_steps)
         mean_salary_list = np.zeros((len(group_name_list), len(time_vals)))
         N_list = np.zeros(len(group_name_list))
+        W_list = np.zeros_like(N_list)
         for i, gname in enumerate(group_name_list):
             # Get values
             self._get_data(gname)
             mean_salary = np.mean(self.s[:, self.skip_values:], axis=0)
-            N = self.N
             # Append values
             mean_salary_list[i] = mean_salary
-            N_list[i] = N
+            N_list[i] = self.N
+            W_list[i] = self.W
         # Create figure
         # Calculate nrows and ncols
-        nrows = 2
-        ncols = (len(group_name_list) + nrows - 1) // nrows
+        # If there is less than 4 data sets, make 1 row
+        less_than_four_datasets = len(group_name_list) < 4
+        if less_than_four_datasets:
+            nrows = 1
+            ncols = len(group_name_list)
+        else:
+            nrows = 2
+            ncols = (len(group_name_list) + nrows - 1) // nrows
         fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
         
-        for i, (mean_salary, N) in enumerate(zip(mean_salary_list, N_list)):
-            ax = axs[i//ncols, i%ncols]
+        for i, (mean_salary, N, W) in enumerate(zip(mean_salary_list, N_list, W_list)):
+            # Get current axis
+            if len(group_name_list) == 1:
+                ax = axs
+            elif less_than_four_datasets:
+                ax = axs[i]
+            else:
+                ax = axs[i//ncols, i%ncols]
+
             ax.plot(time_vals, mean_salary, c=self.colours["salary"])
-            ax.set_title(fr"$W/N = {self.W:.0f}/{N:.0f}$", fontsize=8)
-            ax.set(yscale="log")
+            ax.set_title(fr"$W/N = {W:.0f}/{N:.0f}$", fontsize=8)
+            ax.set(yscale="linear", xlim=self.xlim)
             ax.grid()
 
             # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
@@ -1278,12 +1320,18 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             if subplot_spec.is_last_row():
                 ax.set_xlabel("Time")
             if subplot_spec.is_first_col():
-                ax.set_ylabel("Log Price")
+                ax.set_ylabel("Price")
         
-        fig.suptitle(fr"Mean salary for $N$ variable, $W = {self.W}$")
+        # fig.suptitle(fr"Mean salary for $N$ variable, $W = {self.W}$")
         
         # Text, save show,
-        self._text_save_show(fig, axs[0, 0], "N_var_W_const", xtext=0.05, ytext=0.75, fontsize=6)
+        if len(group_name_list) == 1:
+            save_ax = axs
+        elif less_than_four_datasets:
+            save_ax = axs[0]
+        else:
+            save_ax = axs[0, 0]
+        self._text_save_show(fig, save_ax, "N_var_W_const", xtext=0.05, ytext=0.75, fontsize=6)
 
 
     def plot_N_const_W_var(self, group_name_list):
@@ -1312,7 +1360,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             ax = axs[i//ncols, i%ncols]
             ax.plot(time_vals, mean_salary, c=self.colours["salary"])
             ax.set_title(fr"$W/N = {W:.0f}/{self.N:.0f}$", fontsize=8)
-            ax.set(yscale="log")
+            ax.set(yscale="linear")
             ax.grid()
 
             # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
@@ -1320,12 +1368,17 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             if subplot_spec.is_last_row():
                 ax.set_xlabel("Time")
             if subplot_spec.is_first_col():
-                ax.set_ylabel("Log Price")
+                ax.set_ylabel("Price")
         
-        fig.suptitle(fr"Mean salary for $W$ variable, $N = {self.N}$")
         
         # Text, save show,
-        self._text_save_show(fig, axs[0, 0], "N_const_W_var", xtext=0.05, ytext=0.75, fontsize=6)
+        # If axs is 1d, then only index [0]
+        if len(axs.shape) == 1:
+            save_ax = axs[0]
+        else:
+            save_ax = axs[0, 0]
+        
+        self._text_save_show(fig, save_ax, "N_const_W_var", xtext=0.05, ytext=0.75, fontsize=6)
 
         
     def plot_salary_and_debt_distributions(self):
@@ -1679,7 +1732,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         time_values, mu, d_mean = self._skip_values(self.time_values, self.mu, self.d.mean(axis=0))  # Get mean salary and skip values
         
         # Create figure
-        figsize = (16, 12) if plot_debt else (10, 8)
+        figsize = (16, 12) if plot_debt else (10, 5)
         ncols, nrows = (1, 2) if plot_debt else (1, 1)
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
         if plot_debt:
@@ -1697,7 +1750,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         label_fontsize = 15
         ticks_fontsize = 10
         im = ax.imshow(KDE_prob, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(s_eval), np.max(s_eval)], cmap="hot")
-        if show_mean: ax.plot(time_values, mu/self.W, c="magenta", label=r"$\mu / W$", alpha=1, lw=0.6)
+        if show_mean: ax.plot(time_values, mu/self.W, c="magenta", label=r"$\mu / W$", alpha=1, lw=1)
         ax.set_xlabel("Time", fontsize=label_fontsize)
         ax.set_ylabel("Salary", fontsize=label_fontsize)
         ax.tick_params(axis='both', which='major', labelsize=ticks_fontsize)
@@ -1851,9 +1904,9 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # Load data
         time_vals, diversity = self._worker_diversity()
         # Create figure
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(10, 5))
         ax.plot(time_vals, diversity, c=self.colours["diversity"])
-        ax.set(xlabel="Time", ylabel="Diversity")
+        ax.set(xlabel="Time", ylabel="Diversity", ylim=(0, self.N), xlim=self.xlim)
         ax.grid()
         
         # Text, save, show
@@ -1866,23 +1919,37 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # Load data
         diversity_list = []
         alpha_list = []
+        mean_s_list = []
         for gname in group_name_list:
             # Get values
             self._get_data(gname)
             time_vals, diversity = self._worker_diversity(gname)
+            s = self._skip_values(self.s)
+            mean_s = np.mean(s, axis=0)
             # Append values
             diversity_list.append(diversity)
             alpha_list.append(self.prob_expo)
+            mean_s_list.append(mean_s)
+        
+        s_min = np.min([np.min(s) for s in mean_s_list])
+        s_max = np.max([np.max(s) for s in mean_s_list])
+        s_ylim = (s_min, s_max)
         
         # Create figure
         nrows = 2
         ncols = (len(group_name_list) + nrows - 1) // nrows
-        fig, axs = plt.subplots(figsize=(12, 8), ncols=ncols, nrows=nrows)
+        fig, axs = plt.subplots(figsize=(10, 5), ncols=ncols, nrows=nrows)
         
         # Loop over axes
         for i in range(len(group_name_list)):
+            # Create twin axis where the mean salary is plotted            
             ax = axs[i//ncols, i%ncols]
+            twinx = ax.twinx()
+            twinx.plot(time_vals, mean_s_list[i], c=self.colours["salary"], alpha=0.9)
+            twinx.set(ylim=s_ylim)
+            
             ax.plot(time_vals, diversity_list[i], c=self.colours["diversity"])
+            ax.set(ylim=(0, self.N))
             ax.set_title(fr"$\alpha = {alpha_list[i]:.0f}$")
             ax.grid()
             
@@ -1890,17 +1957,35 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             subplot_spec = ax.get_subplotspec()
             if subplot_spec.is_last_row():
                 ax.set_xlabel("Time")
+            else:
+                ax.set_xticklabels([])
+                twinx.set_xticklabels([])
             if subplot_spec.is_first_col():
-                ax.set_ylabel("Diversity")
-        
+                ax.set_ylabel("Diversity", color=self.colours["diversity"])
+                ax.tick_params(axis='y', labelcolor=self.colours["diversity"])
+                twinx.set_yticklabels([])
+            elif subplot_spec.is_last_col():
+                twinx.tick_params(axis='y', labelcolor=self.colours["salary"])
+                twinx.set_ylabel("Mean salary", color=self.colours["salary"])                
+                ax.set_yticklabels([])
+            else:
+                ax.set_yticklabels([])
+                twinx.set_yticklabels([])
+
         # Text save show
         self._text_save_show(fig, axs[0, 0], "diversity_multiple_alpha", xtext=0.05, ytext=0.85, fontsize=6)
         
         
     def plot_running_KDE_multiple_s_min(self, group_name_list, bandwidth_s=None, eval_points=100, s_lim=None, kernel="gaussian", show_mean=False, show_title=False):
-        figsize = (10, 8)
-        ncols = 2
-        nrows = (len(group_name_list) + ncols - 1) // ncols
+        figsize = (10, 5)
+        less_than_four_datasets = len(group_name_list) < 4
+        if less_than_four_datasets:
+            nrows = 1
+            ncols = len(group_name_list)
+        else:
+            nrows = 2
+            ncols = (len(group_name_list) + nrows - 1) // nrows
+        
         fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
 
         label_fontsize = 15
@@ -1914,7 +1999,6 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
 
         def _get_KDE(gname):
             # Load data
-            print(gname)
             self._get_data(gname)
             # KDE
             s_eval, KDE_prob = self.running_KDE("salary", bandwidth_s, eval_points, kernel, s_lim, gname=gname)  # KDE probabilities
@@ -1942,7 +2026,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         def _plot_KDE(index):
             nonlocal im  # Declare im as nonlocal to update it within the function
             # Salary
-            ax = axs[index // ncols, index % ncols]
+            
+            if len(group_name_list) == 1:
+                ax = axs
+            elif less_than_four_datasets:
+                ax = axs[index]
+            else:
+                ax = axs[index//ncols, index%ncols]
+                
             im = ax.imshow(KDE_prob_arr[index], aspect="auto", origin="lower",
                         extent=[self.skip_values, self.time_steps, np.min(s_eval_arr[index]), np.max(s_eval_arr[index])],
                         cmap="hot", vmin=min_val, vmax=max_val)
@@ -1970,54 +2061,64 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         cbar.set_label(label="Frequency", fontsize=label_fontsize)
         cbar.ax.tick_params(labelsize=0)  # Remove tick labels
 
+        if len(group_name_list) == 1:
+            save_ax = axs
+        elif less_than_four_datasets:
+            save_ax = axs[0]
+        else:
+            save_ax = axs[0, 0]
+
         # Text, save, show
-        self._text_save_show(fig, axs[0, 0], "running_KDE_multiple_s_min", xtext=0.05, ytext=0.95, fontsize=0)
+        self._text_save_show(fig, save_ax, "running_KDE_multiple_s_min", xtext=0.05, ytext=0.95, fontsize=0)
         
         
-    def plot_mu_return(self, yscale):
+    def plot_return_distribution(self, data_name: str, yscale, Nbins=None, ylim=None):
         """Plot the distribution of relative change in mu i.e. the return of the asset price.
         """
         # Load data
         self._get_data(self.group_name)
-        mu,  = self._skip_values(self.mu)
         
-        # Relative change in mu using log
-        r = np.log(mu[1:] / mu[:-1])  # return of asset price
+        # Return
+        r = self._asset_return(data_name, time_period=1)
         
         # Bin data
-        Nbins = int( 0.5 * np.sqrt(len(r)))
+        if Nbins is None:
+            Nbins = int(0.5 * np.sqrt(len(r)))   # A large alpha creates larger variance, thus the need for wider bins
         bins = np.linspace(np.min(r), np.max(r), Nbins)
         counts, edges = np.histogram(r, bins=bins)
         bin_width = edges[1] - edges[0]
 
         # LLH fit to the distribution
-        x_fit, y_gauss, y_student, y_lst = self._mu_return_fit(r)
+        x_fit, y_gauss, y_student, y_lst = self._return_fit(r)
 
         # Create figure
-        fig, ax_hist = plt.subplots(figsize=(12, 8))
+        fig, ax_hist = plt.subplots(figsize=(10, 5))
         
         # Disitribution of returns
         ax_hist.hist(edges[:-1], edges, weights=counts, color=self.colours["mu"], label="Data", density=True)
         # Fits
         ax_hist.plot(x_fit, y_gauss, c="k", label="Gaussian fit")
-        # ax_hist.plot(x_fit, y_student, c="grey", label="Student's t fit")
+        # # ax_hist.plot(x_fit, y_student, c="grey", label="Student's t fit")
         ax_hist.plot(x_fit, y_lst, c="gray", label="Loc. trans. Student t")
 
         # Axis setup
-        ax_hist.set(xlabel="Return", ylabel=f"Probability density (bw={bin_width:.2f})", yscale=yscale)
+        if ylim is None:
+            counts_min = 1e-4
+            counts_max = 1e1
+            ylim = (counts_min, counts_max)
+        ax_hist.set(xlabel="Return", ylabel=f"Probability density (bw={bin_width:.2f})", yscale=yscale, ylim=ylim)
         ax_hist.grid()
-        self._add_legend(ax_hist, ncols=3)
+        self._add_legend(ax_hist, ncols=3, y=0.9)
         
         # Text, save, show
         self._text_save_show(fig, ax_hist, "return", xtext=0.05, ytext=0.85, fontsize=6)
                 
                 
-    def plot_autocorr(self, time_period=1, max_lag=None):
+    def plot_autocorr(self, data_name:str, time_period=1, max_lag=None, same_subplot=False):
         # Get data and calculate autocorrelation
         self._get_data(self.group_name)
         lag_vals = np.arange(max_lag+1)  # Include endpoint
-        mu, = self._skip_values(self.mu)
-        r = self._asset_return(mu, time_period)
+        r = self._asset_return(data_name, time_period)
         autocorr = general_functions.sample_autocorrelation(r, max_lag=max_lag)
         r2 = np.abs(r)#r ** 2
         autocorr_r2 = general_functions.sample_autocorrelation(r2, max_lag=max_lag)
@@ -2035,46 +2136,90 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         title_r1 = fr"$r_{{\tau = {time_period}}}(t)$"
         title_r2 = fr"$|r_{{\tau = {time_period}}}(t)|$"
         
-        fig, (ax, ax_r2) = plt.subplots(nrows=2)
-        ax.plot(lag_vals, autocorr, "--x", c=self.colours["mu"], lw=1)
-        ax.set(ylabel="Autocorrelation", title=title_r1)
-        ax.grid()
-        
-        # r^2
-        ax_r2.plot(lag_vals, autocorr_r2, "--x", c=self.colours["mu"], label="Data")
-        ax_r2.plot(x_fit, y_fit, label=f"Power law fit, a={par[1]:.2f}", c="k", lw=1)
-        ax_r2.set(xlabel="Lag", ylabel="Autocorrelation", title=title_r2)
-        ax_r2.grid()
-        
-        self._add_legend(ax_r2, x=0.5, y=0.85, ncols=2, fontsize=7)
+        # Color
+        if data_name == "mu":
+            colour = self.colours["mu"]
+        elif data_name == "capital_individual_mean":
+            colour = self.colours["capital"]
+
+        if same_subplot:
+            nrows = 1
+        else:
+            nrows = 2
+            
+        fig, axs = plt.subplots(nrows=nrows, figsize=(10, 5))
+        if same_subplot:
+            ax = axs
+
+            # r
+            ax.plot(lag_vals, autocorr, marker="o", ls="--", c=colour, lw=1, label=title_r1)
+            ax.grid()
+            
+            # |r|
+            ax.plot(lag_vals, autocorr_r2, "-*", c=colour, label=title_r2, lw=1, markersize=9)
+            # ax.plot(x_fit, y_fit, label=f"Power law fit, a={par[1]:.2f}", c="k", lw=1, label=title_r2)
+            ax.set(xlabel="Lag", ylabel="Autocorrelation")
+            # Ticks
+            # 6 y ticks, only 0 and 1 has label
+            # 6 x ticks, only 0, 15, and 30 has label
+            x_ticks = np.linspace(0, 30, 7)
+            y_ticks = np.linspace(0, 1, 5)
+            x_label = [0, 15, 30]
+            y_label = [0, 1]
+            self._axis_ticks_and_labels(ax, x_ticks, y_ticks, x_label, y_label)
+            self._add_legend(ax, x=0.5, y=0.88, ncols=2, fontsize=13)
+
+        # Different subplots
+        else:        
+            ax, ax_r2 = axs
+            
+            ax.plot(lag_vals, autocorr, "--x", c=colour, lw=1)
+            ax.set(ylabel="Autocorrelation", title=title_r1)
+            ax.grid()
+            
+            # r^2
+            ax_r2.plot(lag_vals, autocorr_r2, "--x", c=colour, label="Data")
+            ax_r2.plot(x_fit, y_fit, label=f"Power law fit, a={par[1]:.2f}", c="k", lw=1)
+            ax_r2.set(xlabel="Lag", ylabel="Autocorrelation", title=title_r2)
+            ax_r2.grid()
+            
+            self._add_legend(ax_r2, x=0.5, y=0.7, ncols=2, fontsize=13)
         
         # Text, save, show
         self._text_save_show(fig, ax, "autocorr", xtext=0.05, ytext=0.85, fontsize=6)
         
 
-    def plot_mu_return_different_time(self, time_period_list, yscale):
+    def plot_mu_return_different_time(self, time_period_list, data_name:str, yscale, Nbins=None, gauss_std=0.5):
         """Calculate and plot the return for different time periods in the asset return calculation, together with a standard Gaussian.
         """
         # Load data
-        self._get_data(self.group_name)
-        mu,  = self._skip_values(self.mu)
+        self._get_data(self.group_name)    
+        
+        number_of_elements = self._skip_values(self.time_steps)
         
         # Get bins
-        Nbins = int( 0.5 * np.sqrt(len(mu)))
+        if Nbins is None:
+            Nbins = int(0.5 * np.sqrt(number_of_elements))  # A large alpha creates larger variance, thus the need for wider bins
         marker_list = general_functions.list_of_markers
+        
+        counts_min = [10]
+        counts_max = [0]
+        
         def plot_r(axis, i):
             # Calculate r and normalize it
-            r = self._asset_return(mu, time_period_list[i])
+            r = self._asset_return(data_name, time_period_list[i])
             counts, edges = np.histogram(r, bins=Nbins, density=True)
             # Plot
             axis.plot(edges[:-1], counts, marker=marker_list[i], markersize=10, label=fr"$\tau = $ {time_period_list[i]}", lw=1)
-            
+            # Update min and max counts
+            counts_min[0] = min(counts_min[0], np.min(counts[counts>1e-18]))
+            counts_max[0] = max(counts_max[0], np.max(counts))
+        
         # Create figure
-        fig, ax_hist = plt.subplots(figsize=(12, 8))
+        fig, ax_hist = plt.subplots(figsize=(10, 5))
         # Plot the Gaussian
-        gauss_std = 0.5
         gauss_mu = 0
-        x_gauss = np.linspace(-3*gauss_std, 3*gauss_std, 200)  # 3 standard ddviations
+        x_gauss = np.linspace(-4*gauss_std, 4*gauss_std, 200)  # 3 standard ddviations
         y_gauss = scipy.stats.norm.pdf(x_gauss, loc=gauss_mu, scale=gauss_std)
         # Plot the return values
         ax_hist.plot(x_gauss, y_gauss, label="Gaussian", lw=2)
@@ -2082,9 +2227,534 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             plot_r(ax_hist, i)
 
         # Axis setup
-        ax_hist.set(xlabel="Return", ylabel=f"Probability density", yscale=yscale)
+        ax_hist.set(xlabel="Return", ylabel=f"Probability density", yscale=yscale, ylim=(counts_min[0]*0.9, counts_max[0]*1.1))
         ax_hist.grid()
         self._add_legend(ax_hist, ncols=len(time_period_list)+1)
         
         # Text, save, show
         self._text_save_show(fig, ax_hist, "return_different_time", xtext=0.05, ytext=0.85, fontsize=6)
+        
+
+    def plot_running_KDE_NW(self, group_name_list, bandwidth=None, eval_points=100, lim=None, kernel="gaussian", show_mean=False, show_title=False):
+        # Create figure
+        less_than_four_datasets = len(group_name_list) < 4
+        if less_than_four_datasets:
+            ncols = 1
+            nrows = len(group_name_list)
+        else:
+            nrows = 2
+            ncols = (len(group_name_list) + nrows - 1) // nrows
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8))
+
+        # Get data
+        self._get_data(group_name_list[0])
+        s_eval_arr = np.zeros((len(group_name_list), eval_points))
+        KDE_prob_arr = np.zeros((len(group_name_list), eval_points, self.time_steps-self.skip_values))
+        mu_arr = np.zeros((len(group_name_list), self.time_steps-self.skip_values))
+        N_arr = np.zeros(len(group_name_list))
+        W_arr = np.zeros_like(N_arr)
+
+        title_fontsize = 15
+
+        def _get_KDE(gname):
+            # Load data
+            self._get_data(gname)
+            # KDE
+            s_eval, KDE_prob = self.running_KDE("salary", bandwidth, eval_points, kernel, lim, gname=gname)  # KDE probabilities
+            time_values, mu = self._skip_values(self.time_values, self.mu)  # Get mean salary and skip values
+            N = self.N
+            W = self.W
+            return s_eval, KDE_prob, time_values, mu, N, W
+
+        # Calculate data
+        for i, gname in enumerate(group_name_list):
+            s, KDE, time_values, mu, N, W = _get_KDE(gname)
+
+            s_eval_arr[i, :] = s
+            KDE_prob_arr[i, :, :] = KDE
+            mu_arr[i, :] = mu
+            N_arr[i] = N
+            W_arr[i] = W
+
+        # Calculate minimum and maximum values for the colorbar
+        min_val = np.min(KDE_prob_arr)
+        max_val = np.max(KDE_prob_arr)
+
+        # Initialize im to None
+        im = None
+
+        def _plot_KDE(index):
+            nonlocal im  # Declare im as nonlocal to update it within the function
+            # Get current axis
+            if len(group_name_list) == 1:
+                ax = axs
+            elif less_than_four_datasets:
+                ax = axs[index]
+            else:
+                ax = axs[index // ncols, index % ncols]
+                            
+            im = ax.imshow(KDE_prob_arr[index], aspect="auto", origin="lower",
+                        extent=[self.skip_values, self.time_steps, np.min(s_eval_arr[index]), np.max(s_eval_arr[index])],
+                        cmap="hot", vmin=min_val, vmax=max_val)
+            if show_mean:
+                ax.plot(time_values, mu_arr[index] / W_arr[index], c="magenta", label=r"$\mu / W$", alpha=1, lw=0.6)
+            ax.tick_params(axis='both', which='major')
+
+            # Title
+            title = fr"$N =$ {N_arr[index]:.0f}, $W =$ {W_arr[index]:.0f}"
+            ax.set_title(title, fontsize=title_fontsize)
+
+            # Axis labels. Only the bottom row should have x labels, and only the left column should have y labels
+            # Also remove the ticks of inner subplots
+            subplot_spec = ax.get_subplotspec()
+            if subplot_spec.is_last_row():
+                ax.set_xlabel("Time")
+            else:
+                ax.set_xticks([])
+            if subplot_spec.is_first_col():
+                ax.set_ylabel("Wage")
+            else:
+                ax.set_yticks([])
+
+        # Run the plotting function
+        for i in range(len(group_name_list)):
+            _plot_KDE(i)
+
+        # Add a single colorbar for all subplots, stretch it to the full height of the figure
+        cbar = fig.colorbar(im, ax=axs, orientation='vertical')# fraction=0.02, pad=0.04)
+        cbar.set_label(label="Frequency", fontsize=15)
+        cbar.ax.tick_params(labelsize=0)  # Remove tick labels
+
+        # Text, save, show
+        if len(group_name_list) == 1:
+            save_ax = axs
+        elif less_than_four_datasets:
+            save_ax = axs[0]
+        else:
+            save_ax = axs[0, 0]
+        self._text_save_show(fig, save_ax, "running_KDE_NW", xtext=0.05, ytext=0.95, fontsize=0)
+        
+        
+    def plot_mu_capital_sum_and_individual(self, Nbins=None, show_time_series=True, show_distributions=True, ylim_pdf=None):
+        """Two subfigures, one with mean capital and mu, the other with the return distributions using mu, individual capital and sum of capital
+        """
+        assert show_time_series or show_distributions, "At least one of the subfigures must be shown"
+        
+        # Get data
+        self._get_data(self.group_name)
+        # Skip values
+        time_values, mu, d = self._skip_values(self.time_values, self.mu, self.d)
+        capital = -d
+        capital_mean = np.mean(capital, axis=0)
+
+        if show_distributions:
+            # For the distributions, we need to first get the bins and then bin the data
+            # Return distributions
+            time_period = 1
+            r_mu = self._asset_return("mu", time_period)
+            r_capital_individual = self._asset_return("capital_individual", time_period)
+            r_capital_sum = self._asset_return("capital_sum", time_period)
+
+            # Get bins
+            if Nbins is None:
+                Nbins = int(0.9 * np.sqrt(len(r_mu)))
+            r_min = np.min((r_mu.min(), r_capital_individual.min(), r_capital_sum.min()))
+            r_max = np.max((r_mu.max(), r_capital_individual.max(), r_capital_sum.max()))
+            bins = np.linspace(r_min, r_max, Nbins)
+            bin_width = bins[1] - bins[0]
+            # Bin the data
+            counts_mu, _ = np.histogram(r_mu, bins=bins, density=True)
+            counts_capital_individual, _ = np.histogram(r_capital_individual, bins=bins, density=True)
+            counts_capital_sum, _ = np.histogram(r_capital_sum, bins=bins, density=True)
+            # y limits for the return distributions
+            if ylim_pdf is None:
+                ylim_pdf = (1e-4, 1)
+
+        # Create figure
+        show_both = show_time_series and show_distributions
+        if show_both:
+            nrows = 5
+        elif show_distributions:
+            nrows = 4
+        else:
+            nrows = 1
+        fig, axs = plt.subplots(nrows=nrows, figsize=(10, 5))
+        if show_both:
+            ax_time, ax_return = axs
+            save_ax = ax_time
+        elif show_distributions:
+            ax_return = axs
+            save_ax = ax_return
+        else:
+            ax_time = axs
+            save_ax = ax_time
+        
+        if show_time_series:
+            # Time series
+            # Need to have capital and mu on shared x axis
+            twinx = ax_time.twinx()
+            twinx.plot(time_values, capital_mean, label="Mean capital", c=self.colours["debt"])
+            twinx.tick_params(axis='y', labelcolor=self.colours["debt"])
+            twinx.set_ylabel("Capital", color=self.colours["debt"])
+
+            ax_time.plot(time_values, mu / self.W, label=r"$\mu/W$", c=self.colours["mu"])
+            ax_time.set(xlabel="Time", ylabel="Price", title=r"Mean capital and $\mu$")
+            ax_time.grid()
+            ax_time.tick_params(axis="y", labelcolor=self.colours["mu"])    
+            ax_time.set_ylabel(r"$\mu/W$", color=self.colours["mu"])
+
+        if show_distributions:        
+            # Return distributions
+            ax_return.hist(bins[:-1], bins, weights=counts_mu, color=self.colours["mu"], label=r"$\mu$", alpha=0.95, density=True)
+            ax_return.hist(bins[:-1], bins, weights=counts_capital_individual, color=self.colours["capital"], label=r"Individual $C$", alpha=0.8, density=True)
+            ax_return.hist(bins[:-1], bins, weights=counts_capital_sum, color=self.colours["debt"], label=r"Mean $C$", alpha=0.6, density=True)
+            ax_return.set(xlabel="Return", ylabel=f"Prob. Density", title="Return distributions", yscale="log")
+            ax_return.grid()
+            self._add_legend(ax_return, ncols=3, x=0.3, y=0.8)   
+        
+        # Text, save, show
+        self._text_save_show(fig, save_ax, "mu_capital_sum_and_individual", xtext=0.05, ytext=0.85, fontsize=6)
+        
+        
+    def plot_return_distributions(self, Nbins=None, Nbins_indi=None, ylim=None):
+        # Get data
+        self._get_data(self.group_name)
+
+        # For the distributions, we need to first get the bins and then bin the data
+        # Return distributions
+        time_period = 1
+        r_mu = self._asset_return("mu", time_period)
+        r_capital_individual = self._asset_return("capital_individual_mean", time_period)
+        r_capital_sum = self._asset_return("capital_sum", time_period)
+        r_capital_individual_all = self._asset_return("capital_individual_all", time_period)
+
+        # Get bins
+        if Nbins is None:
+            Nbins = int(0.9 * np.sqrt(len(r_mu)))
+        if Nbins_indi is None:
+            Nbins_indi = int(0.9 * np.sqrt(len(r_capital_individual_all)))
+        r_min = np.min((r_mu.min(), r_capital_individual.min(), r_capital_sum.min()))
+        r_max = np.max((r_mu.max(), r_capital_individual.max(), r_capital_sum.max()))
+        bins = np.linspace(r_min, r_max, Nbins)
+                        
+        # Bin the data
+        counts_mu, _ = np.histogram(r_mu, bins=bins, density=True)
+        counts_capital_individual, _ = np.histogram(r_capital_individual, bins=bins, density=True)
+        counts_capital_sum, _ = np.histogram(r_capital_sum, bins=bins, density=True)
+        
+        # y limits for the return distributions
+        if ylim is None:
+            ylim = (5e-4, 1)
+
+        # Create figure
+        fig, axs = plt.subplots(figsize=(10, 5), nrows=2, ncols=1)
+        ax_aggr, ax_indi = axs
+        
+        # ax_aggr: Aggregate distributions (mu, mu mean, mu individual mean)
+        ax_aggr.hist(bins[:-1], bins, weights=counts_mu, color=self.colours["mu"], label=r"$\mu$", alpha=0.95, density=True)
+        ax_aggr.hist(bins[:-1], bins, weights=counts_capital_individual, color=self.colours["capital"], label=r"Mean Individual $C$", alpha=0.8, density=True)
+        ax_aggr.hist(bins[:-1], bins, weights=counts_capital_sum, color=self.colours["debt"], label=r"Mean $C$", alpha=0.6, density=True)
+        ax_aggr.set(ylabel=f"Prob. Density", yscale="log", ylim=ylim, title="Distribution of Aggregate changes")
+        ax_aggr.grid()
+        self._add_legend(ax_aggr, ncols=3, x=0.3, y=0.8)   
+        
+        # ax_indi: Individual capital distributions
+        ax_indi.hist(r_capital_individual_all, bins=Nbins_indi, color=self.colours["capital"], label=r"Individual $C$", alpha=1, density=True)
+        ax_indi.set(xlabel="Return", yscale="log", ylim=ylim, ylabel="Prob. Density", title=r"Distribution of individual $C$ changes")
+        ax_indi.grid()
+        
+        # Text, save, show
+        self._text_save_show(fig, ax_aggr, "mu_capital_sum_and_individual", xtext=0.05, ytext=0.85, fontsize=6)
+        
+    
+    def plot_multiple_return(self, group_name_list, Nbins=None, ylim=None, same_bins=True):
+        """Plot the return distributions for multiple dataset (i.e. alpha=1 and N=100, alpha=4 and N=100)
+        """
+        # Load data
+        r_arr = np.zeros(len(group_name_list), dtype=object)        
+        for i, gname in enumerate(group_name_list):
+            # Load data and store it in arrays
+            self._get_data(gname)
+            r = self._asset_return(data_name="capital_individual_mean", time_period=1)            
+            r_arr[i] = r
+        
+        # r_arr = self._load_multiple_return_data(group_name_list)  
+        
+        # Bin data
+        if Nbins is None:
+            Nbins = int(np.sqrt(len(r_arr[0])))
+        if same_bins:
+            r_min = np.min([np.min(r) for r in r_arr])
+            r_max = np.max([np.max(r) for r in r_arr])
+            bins = np.linspace(r_min, r_max, Nbins)
+        else:
+            bins = Nbins
+        
+        # ylimits
+        if ylim is None:
+            ylim = (1e-4, 1)
+        
+        # Calculate nrows and ncols
+        nrows = 2
+        ncols = (len(group_name_list) + nrows - 1) // nrows
+        
+        # Create figure
+        fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(10, 5))
+        
+        def _plotter(index):
+            # Get axis and data
+            axis = axs if len(group_name_list) == 1 else axs[index//ncols, index%ncols]
+            r = r_arr[index]
+            # Get the parameters from the group name
+            gname = group_name_list[index]
+            name_dict = self._get_par_from_name(gname)
+            alpha = name_dict["alpha"] 
+            N = name_dict["N"]
+            W = name_dict["W"]
+            # Create title from parameters
+            title = fr"$\alpha = {alpha}$, $N = {N}$, $W = {W}$"
+            # Fit the data to a Gaussian and Student's t distribution
+            x_fit, y_gauss, _, y_lst = self._return_fit(r)
+            # Plot the data and the fit
+            axis.plot(x_fit, y_gauss, c="k", label="Gaussian fit")
+            axis.plot(x_fit, y_lst, c="grey", label="Student t fit")
+            axis.hist(r, bins=bins, color=self.colours["capital"], density=True)
+            axis.set_title(title, fontsize=15)
+            axis.set(yscale="log", ylim=ylim)
+            axis.grid()
+        
+            # Axis labels on outer subplots
+            self._axis_labels_outer(axis, x_label="Return", y_label="Prob. Density", remove_x_ticks=same_bins)
+            
+        # Run the plotting function
+        for i in range(len(group_name_list)):
+            _plotter(i)
+        
+        # text save show
+        if len(group_name_list) == 1:
+            save_ax = axs
+        else:
+            save_ax = axs[0, 0]
+        self._text_save_show(fig, save_ax, "multiple_return", xtext=0.05, ytext=0.85, fontsize=6)
+        
+        
+    def KDE_and_diversity(self, bandwidth_s, eval_points, kernel, s_lim) -> None:
+        """Plot the KDE and the wage diversity on two different subplots
+        """
+        # Get data: kde, diversity and mean diff
+        s_eval, KDE_prob = self.running_KDE("salary", bandwidth_s, eval_points, kernel, s_lim)  # KDE probabilities
+        time, diversity = self._worker_diversity()
+        s, mu = self._skip_values(self.s, self.mu)
+        mean_diff = mu / self.W - s
+
+        # Create figure
+        fig, (ax, ax_div) = plt.subplots(figsize=(10, 7.5), nrows=2, gridspec_kw={'height_ratios': [2, 1]})
+        label_fontsize = 20
+        ticks_fontsize = 12.5
+        
+        # KDE
+        im = ax.imshow(KDE_prob, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(s_eval), np.max(s_eval)], cmap="hot")
+        ax.set_ylabel("Wage", fontsize=label_fontsize)
+        ax.tick_params(axis='both', which='major', labelsize=ticks_fontsize)            
+        ax.set_xticks([])
+        
+        # Add colorbar
+        cbar = fig.colorbar(im, ax=ax, ticks=[], pad=0.01)
+        cbar.set_label(label="Frequency", fontsize=label_fontsize)
+
+        # Diversity
+        twinx = ax_div.twinx()
+        twinx.plot(time, mean_diff, c=self.colours["mu"], label=r"$\mu / W - \hat{s}$", alpha=0.9)
+        twinx.set_ylabel(r"$\mu / W - \hat{s}$", color=self.colours["mu"], fontsize=label_fontsize)
+        twinx.tick_params(axis='y', labelcolor=self.colours["mu"], labelsize=ticks_fontsize)
+        
+        ax_div.plot(time, diversity, c=self.colours["diversity"])
+        ax_div.set(xlim=self.xlim, ylim=(0, self.N))
+        ax_div.set_xlabel("Time", fontsize=label_fontsize)
+        ax_div.set_ylabel("Wage diversity", fontsize=label_fontsize)
+        ax_div.tick_params(axis='both', which='major', labelsize=ticks_fontsize)
+        ax_div.grid()
+
+        # Text, save, show
+        self._text_save_show(fig, ax, "KDE_and_diversity", xtext=0.05, ytext=0.95, fontsize=0)
+        
+        
+        
+    def KDE_diversity_multiple_and_time_scale(self, group_name_list, time_scale_group_name_tensor, bandwidth_s, eval_points, kernel, s_lim) -> None:
+        # Get the KDE and Diversity data
+        self._get_data(group_name_list[0])
+        KDE_arr = np.zeros((len(group_name_list), eval_points, self.time_steps-self.skip_values))
+        diversity_arr = np.zeros((len(group_name_list), self.time_steps-self.skip_values))
+        salary_means_diff_arr = np.zeros((len(group_name_list), self.time_steps-self.skip_values))  
+        for i, gname in enumerate(group_name_list):
+            # Load data and store it in arrays
+            s_eval, KDE_prob = self.running_KDE("salary", bandwidth_s, eval_points, kernel, s_lim, gname=gname)
+            time, diversity = self._worker_diversity(gname)
+            s, mu = self._skip_values(self.s, self.mu)
+            salary_means_diff = mu / self.W - np.mean(s, axis=0)
+            KDE_arr[i, :, :] = KDE_prob
+            diversity_arr[i, :] = diversity
+            salary_means_diff_arr[i, :] = salary_means_diff
+        
+        fig = plt.figure(figsize=(10, 10))
+
+        # Define height ratios explicitly: [2,1,2,1,1]
+        gs = GridSpec(nrows=5, ncols=2, figure=fig, height_ratios=[2, 1, 2, 1, 1])
+
+        # First column (top pair: 2:1 ratio)
+        ax00 = fig.add_subplot(gs[0, 0])
+        ax10 = fig.add_subplot(gs[1, 0])
+        # Second column (top pair: 2:1 ratio)
+        ax01 = fig.add_subplot(gs[0, 1])
+        ax11 = fig.add_subplot(gs[1, 1])
+        # First column (second pair: 2:1 ratio)
+        ax20 = fig.add_subplot(gs[2, 0])
+        ax30 = fig.add_subplot(gs[3, 0])
+        # Second column (second pair: 2:1 ratio)
+        ax21 = fig.add_subplot(gs[2, 1])
+        ax31 = fig.add_subplot(gs[3, 1])
+        # Row 5 spanning both columns
+        ax4 = fig.add_subplot(gs[4, :])
+
+        # Ticks
+        tick_width, tick_width_minor = 1.8, 1
+        tick_length, tick_length_minor = 6, 3
+        
+        
+        time_first, time_last = self.time_values[self.skip_values] + 50, self.time_values[-1] - 50 + 1
+        time_ticks = np.linspace(time_first, time_last, 5)
+        time_labels = [time_first, time_first+(time_last-time_first)/2, time_last]
+        
+        KDE_min, KDE_max = 0, 0.18
+        KDE_y_ticks = np.linspace(KDE_min, KDE_max, 5)
+        KDE_y_labels= [KDE_min, KDE_min+(KDE_max-KDE_min)/2, KDE_max]
+        
+        div_y_ticks = np.linspace(0, self.N, 5)
+        div_y_labels = [0, self.N//2, self.N]
+        
+        means_min, means_max = 0, 0.15
+        div_means_ticks = np.linspace(means_min, means_max, 5)
+        div_means_labels = [means_min, (means_max-means_min)/2, means_max]
+
+        list_of_KDE_axis = [ax00, ax01, ax20, ax21]
+        list_of_diversity_axis = [ax10, ax11, ax30, ax31]
+
+        # Plot the KDE and diversity
+        for i in range(len(group_name_list)):
+            # Unpack axes and data
+            ax_KDE = list_of_KDE_axis[i]
+            ax_div = list_of_diversity_axis[i]
+            KDE = KDE_arr[i, :, :]    
+            diversity = diversity_arr[i, :]
+            s_diff = salary_means_diff_arr[i, :]
+            
+            # For all the plotting, do the following steps:
+            # 1. Plot the data
+            # 2. Do the usual axis setup, e.g. limits and grid
+            # 3. Add custom ticks and labels
+            # 4. Remove the tick labels unless is the correct row/column
+            # 5. Add the labels only to the correct outer row/column
+            
+            # KDE
+            im = ax_KDE.imshow(KDE, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(s_eval), np.max(s_eval)], cmap="hot")  # Plot data
+            self._axis_ticks_and_labels(ax_KDE, x_ticks=time_ticks, y_ticks=KDE_y_ticks, x_labels=time_labels, y_labels=KDE_y_labels, x_dtype="int")  # Ticks and labels
+            # Add y axis labels if first column, remove y tick labels from second column
+            is_first_column = i % 2 == 0
+            if is_first_column:
+                ax_KDE.set_ylabel("Wage")
+            else:
+                ax_KDE.set_yticklabels([])
+            # Remove all x ticks labels
+            ax_KDE.set_xticklabels([])
+            ax_KDE.tick_params(axis="both", width=tick_width, length=tick_length, which="major")
+            ax_KDE.tick_params(axis="both", width=tick_width_minor, length=tick_length_minor, which="minor")
+            
+            # twin x tick label color
+            # cbar pos
+            # xticks on first row
+            
+            
+            # Diversity and mean salary difference
+            # Mean salary difference
+            ax_div.plot(time, s_diff, c=self.colours["mu"], label=r"$\mu / W - \hat{s}$", alpha=0.9)
+            ax_div.set(xlim=self.xlim, ylim=(means_min, means_max))
+            ax_div.grid(which='both')
+            self._axis_ticks_and_labels(ax_div, x_ticks=time_ticks, y_ticks=div_means_ticks, x_labels=time_labels, y_labels=div_means_labels, x_dtype="int")
+            # Add colour to the y tick labels
+            ax_div.tick_params(axis='y', labelcolor=self.colours["mu"], colors=self.colours["mu"], which="both")
+            ax_div.tick_params(axis="both", width=tick_width, length=tick_length, which="major")
+            ax_div.tick_params(axis="both", width=tick_width_minor, length=tick_length_minor, which="minor")
+            
+            # Add y axis labels, remove y tick labels form second column
+            if is_first_column:
+                ax_div.set_ylabel(r"$\mu / W - \hat{s}$", color=self.colours["mu"])
+            else:
+                ax_div.set_yticklabels([])
+
+            # Diversity on twin axis
+            twinx = ax_div.twinx()
+            twinx.plot(time, diversity, label="Diversity", c=self.colours["diversity"], alpha=0.7)
+            twinx.set(ylim=(0, self.N))  
+            # Ticks
+            self._axis_ticks_and_labels(twinx, x_ticks=time_ticks, y_ticks=div_y_ticks, x_labels=time_labels, y_labels=div_y_labels, x_dtype="int", y_dtype="int")
+            twinx.tick_params(axis='y', labelcolor=self.colours["diversity"], colors=self.colours["diversity"], which="both")
+            twinx.tick_params(axis="both", width=tick_width, length=tick_length, which="major")
+            twinx.tick_params(axis="both", width=tick_width_minor, length=tick_length_minor, which="minor")
+            
+            
+            # Add y axis labels if second column, remove y tick labels from first row
+            if not is_first_column:
+                twinx.set_ylabel("Wage diversity", color=self.colours["diversity"])
+            else:
+                twinx.set_yticklabels([])
+
+            # Remove x tick labels from the first row. Add time labels to the second row
+            is_first_row = i < 2
+            if is_first_row:
+                ax_div.set_xticklabels([])
+                twinx.set_xticklabels([])
+            else:
+                ax_div.set_xlabel("Time")  
+
+            
+        # Plot the time scale
+        marker_list = ["x", "+", "*", ".", "h", "d"]  # general_functions.list_of_markers
+        ls_list = ["-", "--", "-.", ":"]
+        color_list = general_functions.list_of_colors
+        number_of_markers = len(marker_list)
+        
+        for i, group_name_arr in enumerate(time_scale_group_name_tensor):
+            mean_freq1, std_freq1, mean_freq2, std_freq2, var_list = self.get_PSD_freq_multiple_var(group_name_arr, "ds", "mu")
+            
+            # Get the alpha, N and W values from the group name
+            par_dict = self._get_par_from_name(group_name_arr[0, 0])
+            alpha, N, W = par_dict["alpha"], par_dict["N"], par_dict["W"]
+
+            # Plot data
+            ax4.errorbar(var_list, mean_freq1, yerr=std_freq1, c=color_list[i % number_of_markers], linestyle=ls_list[i%number_of_markers], marker=marker_list[-(i % number_of_markers)], label=fr"$\alpha=${alpha}, $N=${N}, $W=${W}", markersize=8, alpha=0.9)
+            # ax4.plot(var_list, mean_freq1, c=color_list[i % number_of_markers], linestyle=ls_list[i%number_of_markers], marker=marker_list[-(i % number_of_markers)], label=fr"$\alpha=${alpha}, $N=${N}, $W=${W}", markersize=8, alpha=0.9)
+            # ax.errorbar(var_list, mean_freq2, yerr=std_freq2, c=color_list[i], fmt=marker_list[-i-1], label=fr"Second frequency, $\alpha=${alpha}, $N=${N}, $W=${W}")
+        
+        # Axis setup
+        # Ticks
+        ax4_ticks_min, ax4_ticks_max = 0, 0.06 #mean_freq1.max()*1.1
+        ax4_xticks = np.linspace(0, var_list[-1], 5)
+        ax4.tick_params(axis="both", width=tick_width, length=tick_length, which="major")
+        ax4.tick_params(axis="both", width=tick_width_minor, length=tick_length_minor, which="minor")
+        ax4.set(xlabel=r"$\Delta s / s$", ylabel="Frequency", yscale="log") #ylim=(ax4_ticks_min, ax4_ticks_max+0.0001))
+        self._axis_ticks_and_labels(ax4, x_ticks=ax4_xticks, y_ticks=np.linspace(ax4_ticks_min, ax4_ticks_max, 3), 
+                                    x_labels=ax4_xticks[::2], y_labels=[ax4_ticks_min, ax4_ticks_max])
+        ax4.grid(which='both')
+        self._add_legend(ax4, ncols=4, fontsize=8, x=0.5, y=1)
+        
+        
+        # Colorbar
+        # Add a new axis to the figure for the colorbar
+        cbar_ax = fig.add_axes([0.095, 1, 0.82, 0.02])  # figure space [left, bottom, width, height]
+        # Create a horizontal colorbar using the dedicated axis
+        cbar = fig.colorbar(im, cax=cbar_ax, orientation='horizontal', ticks=[])
+        cbar.ax.xaxis.set_label_position('top')  # move the label to the top
+        cbar.set_label(label="Frequency", fontsize=15)
+        
+        # Text save show
+        self._text_save_show(fig, ax00, "KDE_diversity_multiple_and_time_scale", xtext=0.05, ytext=0.95, fontsize=0)
