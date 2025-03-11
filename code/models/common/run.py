@@ -197,6 +197,337 @@ class RunWorkForce(MethodsWorkForce):
         # Reset s_min
         self.ds = ds_current
             
+
+    def generate_m_arr_data(self, m_vals, N_repeat, linear_smin: bool, store_data=True, alpha=None, N=None, W=None):
+        """Store data for different m values with N_repeat repeats or if store_data=False only return group names.
+
+        Args:
+            m_vals (_type_): _description_
+            N_repeat (_type_): _description_
+
+        Returns:
+            np.ndarray: Group name arrays for ds values with repeats
+        """
+        # Get current values such that they can later be reset to these
+        current_N = self.N
+        current_W = self.W
+        current_seed = self.seed
+        current_prob_exponent = self.prob_exponent
+        current_m = self.mutation_magnitude
+        current_smin = self.salary_min
+        
+        # Set alpha, N and W if given, otherwise they are the default values
+        if alpha is not None: self.prob_exponent = alpha
+        if N is not None: self.N = N
+        if W is not None: self.W = W
+        
+        # Create seed array
+        seed_arr = np.arange(0, N_repeat * len(m_vals)).reshape(len(m_vals), N_repeat)
+        group_name_arr = np.zeros((len(m_vals), N_repeat), dtype=object)
+        print("Total number of iterations: ", len(m_vals) * N_repeat)
+        # Loop over ds values, get the gname and then store the data for that gname
+        for i, m in enumerate(m_vals):
+            for j in range(N_repeat):
+                self._set_seed(seed_arr[i, j])
+                self.mutation_magnitude = m
+                if linear_smin: self.salary_min = m / 10
+                group_name_arr[i, j] = self._get_group_name()
+                if store_data: self.store_data_in_group(print_info=False)
+        
+        # Reset values
+        self.mutation_magnitude = current_m
+        self._set_seed(seed=current_seed)
+        self.prob_exponent = current_prob_exponent
+        self.N = current_N
+        self.W = current_W
+        self.salary_min = current_smin
+        
+        if N_repeat == 1:
+            return group_name_arr.flatten()
+        
+        return group_name_arr
+
+    def generate_smin_arr_data(self, smin_vals, N_repeat, store_data=True, alpha=None, N=None, W=None):
+        """Store data for different m values with N_repeat repeats or if store_data=False only return group names.
+
+        Args:
+            m_vals (_type_): _description_
+            N_repeat (_type_): _description_
+
+        Returns:
+            np.ndarray: Group name arrays for ds values with repeats
+        """
+        # Get current values such that they can later be reset to these
+        current_N = self.N
+        current_W = self.W
+        current_seed = self.seed
+        current_prob_exponent = self.prob_exponent
+        current_m = self.mutation_magnitude
+        current_smin = self.salary_min
+        
+        # Set alpha, N and W if given, otherwise they are the default values
+        if alpha is not None: self.prob_exponent = alpha
+        if N is not None: self.N = N
+        if W is not None: self.W = W
+        
+        # Create seed array
+        seed_arr = np.arange(0, N_repeat * len(smin_vals)).reshape(len(smin_vals), N_repeat)
+        group_name_arr = np.zeros((len(smin_vals), N_repeat), dtype=object)
+        print("Total number of iterations: ", len(smin_vals) * N_repeat)
+        # Loop over ds values, get the gname and then store the data for that gname
+        for i, smin in enumerate(smin_vals):
+            for j in range(N_repeat):
+                self._set_seed(seed_arr[i, j])
+                self.salary_min = smin
+                group_name_arr[i, j] = self._get_group_name()
+                if store_data: self.store_data_in_group(print_info=False)
+        
+        # Reset values
+        self.mutation_magnitude = current_m
+        self._set_seed(seed=current_seed)
+        self.prob_exponent = current_prob_exponent
+        self.N = current_N
+        self.W = current_W
+        self.salary_min = current_smin
+        
+        if N_repeat == 1:
+            return group_name_arr.flatten()
+        
+        return group_name_arr
+
+
+    def generate_ds_arr_data(self, ds_vals, N_repeat, store_data=True, alpha=None, N=None, W=None):
+        """Store data for different ds values with N_repeat repeats or if store_data=False only return group names.
+
+        Args:
+            ds_vals (_type_): _description_
+            N_repeat (_type_): _description_
+
+        Returns:
+            np.ndarray: Group name arrays for ds values with repeats
+        """
+        # Get current values such that they can later be reset to these
+        current_N = self.N
+        current_W = self.W
+        current_seed = self.seed
+        current_prob_exponent = self.prob_exponent
+        current_smin = self.salary_min
+        current_ds = self.ds
+        
+        # Set alpha, N and W if given, otherwise they are the default values
+        if alpha is not None: self.prob_exponent = alpha
+        if N is not None: self.N = N
+        if W is not None: self.W = W
+        
+        # Create seed array
+        seed_arr = np.arange(0, N_repeat * len(ds_vals)).reshape(len(ds_vals), N_repeat)
+        group_name_arr = np.zeros((len(ds_vals), N_repeat), dtype=object)
+        # Loop over ds values, get the gname and then store the data for that gname
+        for i, ds in enumerate(ds_vals):
+            for j in range(N_repeat):
+                self._set_seed(seed_arr[i, j])
+                self.ds = ds
+                group_name_arr[i, j] = self._get_group_name()
+                if store_data: self.store_data_in_group(print_info=False)
+        
+        # Reset values
+        self.ds = current_ds
+        self._set_seed(seed=current_seed)
+        self.prob_exponent = current_prob_exponent
+        self.N = current_N
+        self.W = current_W
+        
+        return group_name_arr
+
+
+    def generate_alpha_arr_data(self, alpha_vals, N_repeat, store_data=True, N=None, W=None):
+        """Store data for different ds values with N_repeat repeats or if store_data=False only return group names.
+
+        Args:
+            alpha_vals (_type_): _description_
+            N_repeat (_type_): _description_
+
+        Returns:
+            np.ndarray: Group name arrays for ds values with repeats
+        """
+        # Get current values such that they can later be reset to these
+        current_N = self.N
+        current_W = self.W
+        current_seed = self.seed
+        current_prob_exponent = self.prob_exponent
+        
+        # Set alpha, N and W if given, otherwise they are the default values
+        if N is not None: self.N = N
+        if W is not None: self.W = W
+        
+        # Create seed array
+        seed_arr = np.arange(0, N_repeat * len(alpha_vals)).reshape(len(alpha_vals), N_repeat)
+        group_name_arr = np.zeros((len(alpha_vals), N_repeat), dtype=object)
+        # Loop over ds values, get the gname and then store the data for that gname
+        for i, alpha in enumerate(alpha_vals):
+            for j in range(N_repeat):
+                self._set_seed(seed_arr[i, j])
+                self.prob_exponent = alpha
+                group_name_arr[i, j] = self._get_group_name()
+                if store_data: self.store_data_in_group(print_info=False)
+        
+        # Reset values
+        self._set_seed(seed=current_seed)
+        self.prob_exponent = current_prob_exponent
+        self.N = current_N
+        self.W = current_W
+        
+        if N_repeat == 1:
+            return group_name_arr.flatten()
+        
+        return group_name_arr
+        
+    
+
+    def generate_ds_tensor_data(self, ds_vals, N_repeat, alpha_vals, N_vals, W_vals, store_data, time_steps=None) -> list:
+        """Generate data for a tensor of ds values with repeats for each alpha and N, W values. Elementa in N and W are run pairwise together, e.g. N[0], W[0] are run together.
+
+        Args:
+            ds_vals (_type_): _description_
+            N_repeat (_type_): _description_
+            alpha_vals (_type_): _description_
+            N_vals (_type_): _description_
+            W_vals (_type_): _description_
+
+        Returns:
+            list: list of group name arrays
+        """
+        current_time_steps = self.time_steps
+        # If a time value is given, add the skip values to it
+        if time_steps is not None:
+            self.time_steps = time_steps
+        
+        # Print the total number of iterations
+        if store_data: print(f"Total number of iterations: {len(ds_vals) * len(alpha_vals) * len(N_vals)  * N_repeat}")
+        # Create a list to store the group name arrays
+        list_of_group_name_arr = []
+        for alpha in alpha_vals:
+            for N, W in zip(N_vals, W_vals):
+                name_arr = self.generate_ds_arr_data(ds_vals, N_repeat, store_data=store_data, alpha=alpha, N=N, W=W) 
+                list_of_group_name_arr.append(name_arr)
+        
+        # Reset time steps
+        self.time_steps = current_time_steps
+        
+        return list_of_group_name_arr
+
+
+    def generate_N_W_arr_data(self, N_values, ratio_vals, number_of_repeats, W_values=None, store_data=True, alpha=None, default_values={}):
+        """Store data for three different scenarios: N variable and W constant; N constant and W variable;  N / W ratio.
+
+        Args:
+            variable_arr (_type_): The value of either N or W that is varied
+            constant_value (_type_): The value of the constant variable
+            number_of_repeats (_type_): Number of repeats for each variable value
+            store_data (_type_): Whether to store the data or just return the group names
+            alpha (_type_): The value of the alpha parameter. If None, use the default value
+        Returns:
+            np.ndarray: Group name arrays for ds values with repeats
+        """
+        # Get current values such that they can later be reset to these
+        current_N = self.N
+        current_W = self.W
+        current_seed = self.seed
+        current_prob_exponent = self.prob_exponent
+        
+        # Set alpha, N and W if given, otherwise they are the default values
+        if alpha is not None: self.prob_exponent = alpha
+        
+        # If W_values is None, set it equal to N_values
+        if W_values is None: W_values = N_values
+        
+        # If W_values is not a list or array, create a list with the same value for each N
+        if not isinstance(W_values, (list, np.ndarray)):
+            W_values = [W_values] * len(N_values)
+        
+        # Create seed array.
+        # If there is no repeated measurements, the seed array is 1d, otherwise it is 2d
+        no_repeated_measurements = number_of_repeats == 1
+        most_values = N_values if len(N_values) > len(ratio_vals) else ratio_vals
+        if no_repeated_measurements:
+            seed_arr = np.arange(0, len(most_values))
+        else:
+            seed_arr = np.arange(0, number_of_repeats * len(most_values)).reshape(len(most_values), number_of_repeats)
+        # Store gnames arrays
+        N_gname_arr = np.zeros((len(N_values), number_of_repeats), dtype=object)
+        ratio_gname_arr = np.zeros((len(ratio_vals), number_of_repeats), dtype=object)
+        if store_data: print("Total number of iterations: ", (len(N_values) + len(ratio_vals)) * number_of_repeats)
+        # Loop over ds values, get the gname and then store the data for that gname
+        for i, N in enumerate(N_values):
+            for j in range(number_of_repeats):
+                if no_repeated_measurements: 
+                    self._set_seed(seed_arr[i])
+                else:
+                    self._set_seed(seed_arr[i, j])
+                self.N = N
+                self.W = W_values[i]
+                N_gname_arr[i, j] = self._get_group_name()
+                if store_data: self.store_data_in_group(print_info=False)
+        if store_data: print("Finished N variable, W constant")
+        for i, ratio in enumerate(ratio_vals):
+            for j in range(number_of_repeats):
+                if no_repeated_measurements: 
+                    self._set_seed(seed_arr[i])
+                else:
+                    self._set_seed(seed_arr[i, j])
+                self.N = N_values[0]
+                self.W = int(ratio * N_values[0])
+                ratio_gname_arr[i, j] = self._get_group_name()
+                if store_data: self.store_data_in_group(print_info=False)
+        if store_data: print("Finished ratio")
+        # Reset values
+        self._set_seed(seed=current_seed)
+        self.prob_exponent = current_prob_exponent
+        self.N = current_N
+        self.W = current_W
+        
+        if no_repeated_measurements:
+            return N_gname_arr.flatten(), ratio_gname_arr.flatten()
+        return N_gname_arr, ratio_gname_arr
+    
+    
+    def generate_system_data(self, alpha_values, N_values, W_factor, store_data=True):
+        """Store data for different alpha, N, W=W_factor * N values with N_repeat repeats or if store_data=False only return group names.
+
+        Args:
+            ds_vals (_type_): _description_
+            N_repeat (_type_): _description_
+
+        Returns:
+            np.ndarray: Group name arrays for ds values with repeats
+        """
+        # Get current values such that they can later be reset to these
+        current_N = self.N
+        current_W = self.W
+        current_seed = self.seed
+        current_prob_exponent = self.prob_exponent
+        
+        # Create seed array
+        seed_arr = np.arange(0, len(alpha_values))
+        group_name_arr = np.zeros_like(seed_arr, dtype=object)
+        for i, alpha, N in zip(np.arange(len(alpha_values)), alpha_values, N_values):
+            self._set_seed(seed_arr[i])
+            self.prob_exponent = alpha
+            self.N = N
+            self.W = int(W_factor * N)
+            
+            group_name_arr[i] = self._get_group_name()
+            if store_data: self.store_data_in_group(print_info=False)
+        
+        # Reset values
+        self._set_seed(seed=current_seed)
+        self.prob_exponent = current_prob_exponent
+        self.N = current_N
+        self.W = current_W
+        
+        return group_name_arr
+            
+            
 if __name__ == "__main__":
     number_of_companies = 10
     number_of_workers = 20
