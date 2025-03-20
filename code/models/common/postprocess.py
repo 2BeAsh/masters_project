@@ -4,6 +4,7 @@ from scipy.ndimage import uniform_filter1d
 import scipy.special
 import scipy.signal
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker  
 import h5py
 from sklearn.neighbors import KernelDensity
 from run import file_path
@@ -195,7 +196,33 @@ class PostProcess:
         axis.set_yticklabels(major_y_labels)
         # Set minor ticks for the y-axis
         axis.set_yticks(minor_y, minor=True)
+    
+    
+    def _axis_log_ticks_and_labels(self, axis, exponent_range, labels_skipped=1, numticks=10, base=10.0, which="y"):
+        """_summary_
 
+        Args:
+            axis (_type_): _description_
+            exponent_range (tuple of ints): The range of exponents to show on the axis.
+            labels_skipped (int, optional): Every ticklabel will have labels_skipped major ticks with no labels. Defaults to 1.
+            numticks (int, optional): Number of minor ticks between major ticks. Defaults to 10.
+            base (float, optional): Logbase. Defaults to 10.0.
+        """
+        # Make sure the exponent range has integer values
+        exponent_range = (np.floor(exponent_range[0]).astype(int), 
+                          np.ceil(exponent_range[1]).astype(int))
+        
+        if which == "y":
+            axis.yaxis.set_major_locator(ticker.LogLocator(base=base, numticks=numticks))
+            axis.yaxis.set_minor_locator(ticker.LogLocator(base=base, subs='auto', numticks=numticks))
+            # axis.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: '{:.0e}'.format(y) if y in [base**i for i in range(*exponent_range, labels_skipped+1)] else ''))
+            axis.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: r'${{10^{{{}}}}}$'.format(int(np.log10(y))) if y in [base**i for i in range(*exponent_range, labels_skipped+1)] else ''))
+
+        elif which == "x":
+            axis.xaxis.set_major_locator(ticker.LogLocator(base=base, numticks=numticks))
+            axis.xaxis.set_minor_locator(ticker.LogLocator(base=base, subs='auto', numticks=numticks))
+            # axis.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: '{:.0e}'.format(x) if x in [base**i for i in range(*exponent_range, labels_skipped+1)] else ''))
+            axis.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: r'${{10^{{{}}}}}$'.format(int(np.log10(x))) if x in [base**i for i in range(*exponent_range, labels_skipped+1)] else ''))
 
 
     def time_from_negative_income_to_bankruptcy(self, skip_values, show_plot):
@@ -466,7 +493,7 @@ class PostProcess:
         add_time = 0
         if x_data == "salary":
             x_data = self.s
-        elif x_data == "debt":
+        elif x_data == "capital":
             x_data = -self.d
         elif x_data == "delta_debt":
             x_data = -np.diff(self.d, axis=1)
@@ -492,8 +519,8 @@ class PostProcess:
         
         return eval, KDE_prop_arr
     
-    # Power Spectral Density (PSD) analysis
     
+    # -- Power Spectral Density (PSD) analysis --
     def _compute_PSD(self, data, fs):
         """Use Welch's method to compute the Power Spectral Density (PSD) of the data.
 
@@ -517,12 +544,15 @@ class PostProcess:
         """Find the peaks in the Power spectral density (PSD) and return the number_of_frequencies most prominent peaks.
 
         Args:
-            freqs (_type_): _description_
-            psd (_type_): _description_
-            number_of_frequencies (_type_): _description_
+            freqs (np.ndarray): Array of frequency values corresponding to the PSD.
+            psd (np.ndarray): Power spectral density values.
+            number_of_frequencies (int): Number of dominant frequencies to return.
 
         Returns:
-            _type_: _description_
+            tuple: A tuple containing two numpy arrays:
+            - dominant_freqs (np.ndarray): Array of the most prominent frequency peaks.
+            - dominant_powers (np.ndarray): Array of the power values of the most prominent frequency peaks.    
+            - dominant_indices (np.ndarray): Array of the indices of the most prominent frequency peaks.   
         """
         if len(psd) == 0:
             print("No data to find dominant frequencies, returning empty arrays")
@@ -534,11 +564,12 @@ class PostProcess:
         sorted_indices = np.argsort(psd[peaks])[::-1]  # Sort in descending order
         dominant_freqs = freqs[peaks][sorted_indices][:number_of_frequencies]  # Get the the number_of_frequencies most prominent frequency peaks
         dominant_powers = psd[peaks][sorted_indices][:number_of_frequencies]
-       
+        
         # If less than number_of_frequencies peaks are found, fill the rest with NaN
         if len(dominant_freqs) < number_of_frequencies:
             dominant_freqs = np.pad(dominant_freqs, (0, number_of_frequencies-len(dominant_freqs)), constant_values=np.nan)
             dominant_powers = np.pad(dominant_powers, (0, number_of_frequencies-len(dominant_powers)), constant_values=np.nan)
+        
         return dominant_freqs, dominant_powers
     
     
@@ -736,4 +767,17 @@ class PostProcess:
         return r_arr
     
     
-    
+    def onedim_KDE(self, x, bandwidth, x_eval=None, N_eval_points=100, kernel="gaussian", log_scale=False):
+        # If not given specific evaluation points, evaluate the whole space
+        if x_eval is None:
+            x_min, x_max = x.min(), x.max()
+            if log_scale:
+                if x_min <= 0: raise ValueError(f"Data must be positive for log scale, but xmin is {x_min}")
+                x_eval = np.logspace(np.log10(x_min), np.log10(x_max), N_eval_points)
+            else:
+                x_eval = np.linspace(x_min, x_max, N_eval_points)
+        # KDE
+        kde = KernelDensity(bandwidth=bandwidth, kernel=kernel)
+        kde.fit(x[:, None])
+        P = np.exp(kde.score_samples(x_eval[:, None]))
+        return x_eval, P
