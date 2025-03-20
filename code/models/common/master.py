@@ -34,7 +34,7 @@ class WorkForce():
         # Company variables
         self.w = np.ones(self.N, dtype=np.int32)
         self.d = np.zeros(self.N, dtype=np.float32) #-2 * np.ones(self.N, dtype=np.float32)
-        self.salary = np.random.uniform(self.mutation_magnitude, 3*self.mutation_magnitude, self.N)
+        self.salary = np.random.uniform(self.salary_min+self.mutation_magnitude, self.salary_min+3*self.mutation_magnitude, self.N)
         
         # Initial values
         if type(self.rf) == str:
