@@ -60,8 +60,10 @@ class MethodsWorkForce(WorkForce):
             self.func_bankrupt_salary = self._bankruptcy_salary_normal
         elif self.mutation_method == "positive_income":
             self.func_bankrupt_salary = self._bankruptcy_salary_positive_income
+        elif self.mutation_method == "relative":
+            self.func_bankrupt_salary = self._bankrupt_salary_relative
         else:
-            print("Mutation magnitude must be `constant`, 'spread' or 'lastT', 'minimum', ")
+            print(f"Wrong Mutation magnitude method {self.mutation_method} given, ")
     
     
     def _pick_interest_update_func(self):
@@ -148,7 +150,7 @@ class MethodsWorkForce(WorkForce):
         ds_pos = self.salary * (1 + ds_noise)
         ds_neg = self.salary * (1 - ds_noise * negative_correction)
         # Find who wants to increase i.e. who lowered their debt
-        want_to_increase = self.d - self.d_hist[:, self.current_time - 1] <= 0
+        want_to_increase = self.d - self.d_hist[:, self.current_time - 1] < 0
         # Perform update and enforce minimum salary
         self.salary = np.where(want_to_increase, ds_pos, ds_neg) + additive_noise
         self.salary = np.maximum(self.salary, self.salary_min)            
@@ -443,6 +445,34 @@ class MethodsWorkForce(WorkForce):
         mutations = np.random.uniform(-self.mutation_magnitude, self.mutation_magnitude, size=self.went_bankrupt)
         self.salary[bankrupt_idx] = self.salary[idx_new_salary] + mutations
             
+
+    def _bankrupt_salary_relative(self, bankrupt_idx):
+        """Bankrupt companies pick a non-bankrupt company and relative mutate their salary .
+
+        Args:
+            bankrupt_idx (np.ndarray): List of companies who went bankrupt
+        """
+        # Find the companies that made a profit and did not go bankrupt this time step
+        idx_not_bankrupt = ~bankrupt_idx
+        positive_workers = self.w > 0
+        legal_company = idx_not_bankrupt & positive_workers
+        profit = self.d - self.d_hist[:, self.current_time - 1]
+        idx_made_a_profit = profit < 0 & legal_company
+        N_made_a_profit = idx_made_a_profit.sum()
+                
+        # Draw from the companies that made a profit
+        if N_made_a_profit > 0:
+            idx_new_salary = np.random.choice(np.arange(self.N)[idx_made_a_profit], size=self.went_bankrupt, replace=True)
+        
+        # If no companies made a profit, draw from the top 25% who lost the least
+        else:
+            idx_sorted = np.argsort(profit)
+            idx_top_50p = idx_sorted[:int(self.N / 2)]  # Goes from low to high, and want the profit to be a large negative number
+            idx_new_salary = np.random.choice(idx_top_50p, size=self.went_bankrupt, replace=True)
+
+        mutations = np.random.uniform(-self.mutation_magnitude / (1 + np.abs(self.mutation_magnitude)), self.mutation_magnitude, size=self.went_bankrupt)
+        self.salary[bankrupt_idx] = self.salary[idx_new_salary] * (1 + mutations)
+        
 
     def _update_rf(self):
         """The interest rate is updated based on the percent change in mu.
