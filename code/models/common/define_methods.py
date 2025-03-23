@@ -16,6 +16,8 @@ class MethodsWorkForce(WorkForce):
         self.worker_update_method = update_methods["worker_update"]
         self.bankruptcy_method = update_methods["bankruptcy"]
         self.mutation_method = update_methods["mutation"]
+        self.transaction_method = update_methods["transaction_method"]
+        self.include_bankrupt_salary_in_mu = update_methods["include_bankrupt_salary_in_mu"]
         super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, time_steps, seed)
         
         # Initial values and choice of methods
@@ -87,24 +89,76 @@ class MethodsWorkForce(WorkForce):
 
 
     def _transaction(self):
-        # Pick the indices of the companies that will sell
-        # Only w>0 companies perform transactions
+        # Use the salaries of last time step
+        salary_last_time = self.s_hist[:, self.current_time - 1]
+        # Pick the indices of the companies that will sell, Only w>0 companies perform transactions
         number_of_companies_selling = np.sum(self.w > 0)
         idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
-        
-        # idx_companies_selling = np.random.choice(np.arange(self.N), size=self.N, replace=True)
                         
         # Find which companies that sells and how many times they do it
         idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
-        # Find how much each of the chosen companies sell for and how much they pay in salary
-        sell_unique = self.w[idx_unique] * self.mu / self.W  
-        salary_unique = self.salary[idx_unique] * self.w[idx_unique]
-        # Multiply that by how many times they sold and paid salaries
+        # Find how much each of the chosen companies sell for
+        sell_unique = self.w[idx_unique] * self.mu / (self.W - self.W_not_payed)  
+        # Multiply that by how many times they sold
         sell_unique_all = sell_unique * counts
-        salary_unique_all = salary_unique * counts
         # Update values
-        self.d[idx_unique] += salary_unique_all - sell_unique_all
-        self.system_money_spent += salary_unique_all.sum()
+        self.d[idx_unique] -= sell_unique_all
+        # Salary depends on "freelance" or not
+        
+        # Wage i.e. pay workers every time a job is done
+        if self.transaction_method == "wage":
+            # Do the same as with the capital, find unique and counts.
+            salary_unique = salary_last_time[idx_unique] * self.w[idx_unique]
+            salary_unique_all = salary_unique * counts
+            
+            if not self.include_bankrupt_salary_in_mu:
+                # If would go in positive debt from paying salaries, set debt to 1e-10 (just have to be >0) and don't pay the salary i.e. don't record it in mu.
+                # Get the indices of companies going bankrupt and not bankrupt
+                idx_goes_bankrupt = np.nonzero(self.d[idx_unique] + salary_unique_all > 0)
+                idx_not_bankrupt = np.nonzero(self.d[idx_unique] + salary_unique_all <= 0)
+                # Set debt of bankrupt to arbitrary small positive number triggering bankrupt criteria.
+                # Update the non-bankrupt companies as usual
+                self.d[idx_goes_bankrupt] = 1e-10  
+                salary_unique_all = salary_unique_all[idx_not_bankrupt]
+                self.d[idx_not_bankrupt] += salary_unique_all
+                
+                # Calculate the number of workers who did not receive payment
+                self.W_not_payed = np.sum(self.w[idx_goes_bankrupt])
+                # print("Number of companies not paying their workers:", len(idx_goes_bankrupt))
+                # print("Workers not payed:", self.W_not_payed)
+                
+            else:            
+                self.d[idx_unique] += salary_unique_all
+            
+            self.system_money_spent = salary_unique_all.sum()
+        
+        
+        # Salary i.e. pay workers every time step
+        elif self.transaction_method == "salary":
+            # Salary calculation
+            salary_payments = self.w * salary_last_time
+            
+            if not self.include_bankrupt_salary_in_mu:
+                # If would go in positive debt from paying salaries, set debt to 1e-10 (just have to be >0) and don't pay the salary i.e. don't record it in mu.
+                # Get the indices of companies going bankrupt and not bankrupt (we could perform the update to debt in one line, but want to update salaries as well)
+                idx_goes_bankrupt = np.nonzero(self.d + salary_payments > 0)
+                idx_not_bankrupt = np.nonzero(self.d + salary_payments <= 0)
+                
+                # Update values
+                salary_payments[idx_goes_bankrupt] = 0  # Do not count bankrupt companies in mu
+                self.d += salary_payments
+                self.d[idx_goes_bankrupt] = 1e-10
+                
+                # Calculate the number of workers who did not receive payment
+                self.W_not_payed = np.sum(self.w[idx_goes_bankrupt])
+                # print("Number of companies not paying their workers:", np.size(idx_goes_bankrupt))
+                # print("Workers not payed:", self.W_not_payed)
+
+            else:
+                # All companies pay salaries
+                self.d += salary_payments
+            
+            self.system_money_spent = salary_payments.sum()    
                 
 
     def _transaction_worker(self):
@@ -137,22 +191,46 @@ class MethodsWorkForce(WorkForce):
         positive_debt_idx = self.d > 0
         money_spent_on_interest = self.d[positive_debt_idx] * self.r
         self.d[positive_debt_idx] += money_spent_on_interest
+          
         
-    
+    def _update_salary_C_system(self):
+    # def _update_salary(self):
+        """Companies adjust their salary according to their own profit criteria, but also the overall trend in the economy.
+        """
+        # System capital change
+        d_sum_last_step = self.d_hist[:, self.current_time-1].sum()
+        d_rel_change = (self.d.sum() - d_sum_last_step) / d_sum_last_step
+        salary_increase_economy = self.salary * (d_rel_change) 
+        
+        # Individual companies
+        negative_correction = 1 / (1 + self.ds)
+        ds_pos = self.salary * self.ds
+        ds_neg = self.salary * (- self.ds) * negative_correction
+        want_to_increase = self.d - self.d_hist[:, self.current_time-1] <= 0
+        salary_increase_individual = np.where(want_to_increase, ds_pos, ds_neg)
+        
+        # print("Capital last step: ", -d_sum_last_step)
+        # print("Capital relative change ", d_rel_change)
+        # print("Salary increase individual: ", salary_increase_individual[::25])
+                
+        # Perform update, summing the individual and economy contributions. 
+        # Enforce minimum salary        
+        self.salary += salary_increase_individual + salary_increase_economy
+        self.salary = np.maximum(self.salary, self.salary_min)
+
+
+    # the usual one:
     def _update_salary(self):
         """All companies update their salaries depending on whether they made a profit or not. 
         """
-        additive_noise = 0 #np.random.uniform(-0.05, 0.05, size=self.N)
-        noise_factor = 1 # np.random.uniform(0, 1, size=self.N)
-        ds_noise = self.ds * noise_factor
-        negative_correction = 1 / (1 + np.abs(ds_noise))
+        negative_correction = 1 / (1 + self.ds)
         # Values after update
-        ds_pos = self.salary * (1 + ds_noise)
-        ds_neg = self.salary * (1 - ds_noise * negative_correction)
+        ds_pos = self.salary * (1 + self.ds)
+        ds_neg = self.salary * (1 - self.ds * negative_correction)
         # Find who wants to increase i.e. who lowered their debt
-        want_to_increase = self.d - self.d_hist[:, self.current_time - 1] < 0
+        want_to_increase = self.d - self.d_hist[:, self.current_time - 1] <= 0
         # Perform update and enforce minimum salary
-        self.salary = np.where(want_to_increase, ds_pos, ds_neg) + additive_noise
+        self.salary = np.where(want_to_increase, ds_pos, ds_neg)
         self.salary = np.maximum(self.salary, self.salary_min)            
     
     
@@ -506,10 +584,3 @@ class MethodsWorkForce(WorkForce):
     def _store_values_in_history_arrays(self):
         self.T = self._time_scale()
         super()._store_values_in_history_arrays()
-
-    
-                        
-
-        
-        
-        

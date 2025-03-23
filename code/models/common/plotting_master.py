@@ -67,14 +67,17 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         """Plot the mean salary and fraction who went bankrupt on twinx. Plot the spread (std/mean) on a subplot below it."""
         self._get_data(self.group_name)
         mean_salary = self.s.mean(axis=0)[self.skip_values:]
-        median_salary = np.median(self.s, axis=0)[self.skip_values:]
+        
+        mu, w_not_payed = self._skip_values(self.mu, self.w_not_payed)
+        mu = mu / (self.W - w_not_payed)
+        # median_salary = np.median(self.s, axis=0)[self.skip_values:]
         fraction_bankrupt = (self.went_bankrupt[self.skip_values:] / self.N)
         spread = (self.s.std(axis=0)[self.skip_values:] / mean_salary)
         time_values = np.arange(self.skip_values, self.time_steps)
         
         # Create figure
         nrows = 1 if not show_spread else 2
-        fig, ax0 = plt.subplots(nrows=nrows, figsize=(10, 8))
+        fig, ax0 = plt.subplots(nrows=nrows, figsize=(10, 5))
         
         if show_spread:
             ax0, ax1 = ax0
@@ -91,7 +94,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
 
         # Mean and median salary
         ax0.plot(time_values, mean_salary, label="Mean salary", c=c0, alpha=1)
-        ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.7, ls="dotted")
+        ax0.plot(time_values, mu, label=r"$\mu/(W-w_\text{not payed})$", c=self.colours["mu"])
+        # ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.7, ls="dotted")
         ax0.set(xlim=self.xlim, ylabel="Price", yscale="linear", title="Mean salary and bankruptcies")
         ax0.set_ylabel("Price", color=c0)
         ax0.tick_params(axis='y', labelcolor=c0)
@@ -120,33 +124,33 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Get first N_plot companies
         s = self.s[:N_plot, self.skip_values:]
-        d = self.d[:N_plot, self.skip_values:]
+        C = -self.d[:N_plot, self.skip_values:]
         w = self.w[:N_plot, self.skip_values:]
         time_values = np.arange(self.skip_values, self.time_steps)
                 
         # Create figure
-        fig, (ax_s, ax_d, ax_w) = plt.subplots(nrows=3, figsize=(10, 8))
+        fig, (ax_s, ax_d, ax_w) = plt.subplots(nrows=3, figsize=(10, 5))
         
         # ax_s - salary
         ylim = (0.99e-2, np.max(s)*1.01)
         ax_s.plot(time_values, s.T)
-        ax_s.set(title=f"Salary and debt of first {N_plot} companies", yscale="log", ylim=ylim)
-        ax_s.set_ylabel("Log salary")
+        ax_s.set(title=f"Salary and debt of first {N_plot} companies", yscale="linear", ylim=ylim)
+        ax_s.set_ylabel("Salary")
         # ax_s.tick_params(axis='y', labelcolor=c0)
         ax_s.grid()
         
         # ax_d - debt
         # ax_d = ax_s.twinx()
-        ax_d.plot(time_values, d.T,)
-        ax_d.set(xlabel="Time", ylabel="Log Debt", yscale="symlog")
-        ax_d.set_ylabel("Debt")
+        ax_d.plot(time_values, C.T,)
+        ax_d.set(xlabel="Time", ylabel="Log Capital", yscale="linear")
+        ax_d.set_ylabel("Capital")
         # ax_d.tick_params(axis='y', labelcolor=c1)
         ax_d.grid()
 
         # Plot bankruptcies for the first company on the debt subplot
         idx_bankrupt = self.went_bankrupt_idx[0, self.skip_values:]
         time_bankrupt = time_values[idx_bankrupt]
-        d_bankrupt = d[0, idx_bankrupt]
+        d_bankrupt = C[0, idx_bankrupt]
         s_bankrupt = s[0, idx_bankrupt]
         ax_d.scatter(time_bankrupt, d_bankrupt, c=self.colours["bankruptcy"], marker="x", s=20)
         ax_s.scatter(time_bankrupt, s_bankrupt, c=self.colours["bankruptcy"], marker="x", s=20)
@@ -159,27 +163,29 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         self._text_save_show(fig, ax_s, "single_companies", xtext=0.05, ytext=0.85)
         
         
-    def plot_debt(self):
+    def plot_capital(self):
         """Plot the mean debt and fraction who went bankrupt on twinx and below it debt together with salary, last subplot has debt distribution at final time step. 
         """
         # Preprocess
         self._get_data(self.group_name)
-        d = -self.d
-        mean_debt = self.d.mean(axis=0)[self.skip_values:]
-        median_debt = np.median(d, axis=0)[self.skip_values:]
+        C = -self.d
+        mean_C = C.mean(axis=0)[self.skip_values:]
+        median_C = np.median(C, axis=0)[self.skip_values:]
         mean_salary = self.s.mean(axis=0)[self.skip_values:]
+        mu, w_not_payed = self._skip_values(self.mu, self.w_not_payed)
+        mean_salary = mu / (self.W - w_not_payed)
         fraction_bankrupt = (self.went_bankrupt[self.skip_values:] / self.N)
         time_values = np.arange(self.skip_values, self.time_steps)
-        d_final = self.d[:, -1]
+        C_final = C[:, -1]
         
         # Create figure
-        fig, (ax, ax1) = plt.subplots(nrows=2, figsize=(10, 8))
-        c0 = self.colours["debt"]
+        fig, (ax, ax1) = plt.subplots(nrows=2, figsize=(10, 5))
+        c0 = self.colours["capital"]
         c1 = self.colours["bankruptcy"]
         
-        ax.plot(time_values, mean_debt, c=c0, label="Mean debt")
+        ax.plot(time_values, mean_C, c=c0, label="Mean Capital")
         # ax.plot(time_values, median_debt, c=c0, ls="--", label="Median debt")
-        ax.set(xlabel="Time", title="Mean debt and bankruptcies", yscale="linear")
+        ax.set(xlabel="Time", title="Mean capital and bankruptcies", yscale="linear")
         ax.set_ylabel("Price", color=c0)
         ax.tick_params(axis='y', labelcolor=c0)
         ax.grid()
@@ -191,15 +197,15 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # ax1 - Salary and debt
         c2 = self.colours["salary"]
-        ax1.plot(time_values, mean_debt, c=c0)
-        ax1.set(xlabel="Time", title="Mean salary and debt", yscale="linear")
-        ax1.set_ylabel("Mean Debt", color=c0)
+        ax1.plot(time_values, mean_C, c=c0)
+        ax1.set(xlabel="Time", title="Mean salary and capital", yscale="linear")
+        ax1.set_ylabel("Mean Capital", color=c0)
         ax1.tick_params(axis='y', labelcolor=c0)
         ax1.grid()
         
         ax1_twin = ax1.twinx()
         ax1_twin.plot(time_values, mean_salary, c=c2, alpha=0.7)
-        ax1_twin.set_ylabel("Log mean salary", color=c2)
+        ax1_twin.set_ylabel("Mean salary", color=c2)
         ax1_twin.tick_params(axis='y', labelcolor=c2)
         ax1_twin.set_yscale("linear")
         
@@ -212,7 +218,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # Log scale hist requires only positive values
         # self._xlog_hist(d_final, fig, ax2, xlabel="Log Debt", ylabel="Counts", title="Debt distribution at final time step")
         
-        self._text_save_show(fig, ax, "debt", xtext=0.05, ytext=0.85, fontsize=6)
+        self._text_save_show(fig, ax, "capital", xtext=0.05, ytext=0.85, fontsize=6)
     
     
     def plot_mu_mean_s_diversity(self):
@@ -2975,15 +2981,21 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         s_eval, KDE_prob = self.running_KDE("salary", bandwidth_s, eval_points, kernel, s_lim)  # KDE probabilities
 
         # Calculate capital diff
-        C, time = self._skip_values(-self.d, self.time_values[:-1])
-        C_diff = np.diff(C)
+        s, C, time = self._skip_values(self.s, -self.d, self.time_values[:-1])
+        C_diff = np.diff(C, axis=1)
         increased = np.count_nonzero(C_diff>0, axis=0)
         increased_at_zero = np.count_nonzero(C_diff==0, axis=0)
         decreased = np.count_nonzero(C_diff<0, axis=0)
+        # Calcluate whether increased or not by looking at salary differences
+        s_diff = np.diff(s, axis=1)
+        # increased = np.count_nonzero(s_diff>0, axis=0)
+        # decreased = np.count_nonzero(s_diff<=0, axis=0)
+        
         # Calculate rolling averages
         increased = uniform_filter1d(increased, size=window_size)
         increased_at_zero = uniform_filter1d(increased_at_zero, size=window_size)
         decreased = uniform_filter1d(decreased, size=window_size)
+        
         
         # Create figure
         fig, (ax_w, ax) = plt.subplots(figsize=(10, 5), nrows=2)
@@ -2994,13 +3006,11 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax.plot(time, increased, "-", color="green", label=r"Increased $w$")
         ax.plot(time, increased_at_zero, ls="dashdot", color="orange", label=r"Increased $w$ at $\Delta C =0$")
         ax.plot(time, decreased, "--", color="red", label=r"Decreased $w$")
-        ax.set(xlabel="Time", ylabel="Number of companies", xlim=self.xlim)
+        title = f"Mean decrease = {np.mean(decreased):.1f}, Mean increase = {np.mean(increased):.1f}"
+        ax.set(xlabel="Time", ylabel="Number of companies", xlim=self.xlim, title=title)
         ax.grid()
         
-        
-        
-        
-        self._add_legend(ax, ncols=3, fontsize=8, x=0.5, y=1)
+        self._add_legend(ax, ncols=3, fontsize=8, x=0.5, y=0.9)
         
         # Text save show
         self._text_save_show(fig, ax, "increased_decreased", xtext=0.05, ytext=0.85, fontsize=8)

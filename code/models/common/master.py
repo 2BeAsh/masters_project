@@ -33,7 +33,7 @@ class WorkForce():
     def _initialize_market_variables(self):
         # Company variables
         self.w = np.ones(self.N, dtype=np.int32)
-        self.d = np.zeros(self.N, dtype=np.float32) #-2 * np.ones(self.N, dtype=np.float32)
+        self.d = -np.ones(self.N, dtype=np.float32) * self.mutation_magnitude
         self.salary = np.random.uniform(self.salary_min+self.mutation_magnitude, self.salary_min+3*self.mutation_magnitude, self.N)
         
         # Initial values
@@ -48,12 +48,13 @@ class WorkForce():
         self.mu = self.mutation_magnitude * self.W / 2
         self.system_money_spent = self.mu 
         self.T = self._time_scale()
+        self.W_not_payed = 0
     
     
     def _initialize_history_arrays(self):
         # Company
         self.w_hist = np.zeros((self.N, self.time_steps), dtype=np.int32)
-        self.d_hist = np.ones((self.N, self.time_steps), dtype=np.float32) * (-1e-8)
+        self.d_hist = np.ones((self.N, self.time_steps), dtype=np.float32) * self.mutation_magnitude
         self.s_hist = np.ones((self.N, self.time_steps), dtype=np.float32)
         # System
         self.r_hist = np.zeros(self.time_steps, dtype=np.float32)
@@ -61,6 +62,7 @@ class WorkForce():
         self.went_bankrupt_idx_hist = np.zeros((self.N, self.time_steps), dtype=np.bool)
         self.mu_hist = np.zeros(self.time_steps, dtype=np.float32)
         self.mutations_hist = np.ones(self.time_steps, dtype=np.float32)
+        self.w_not_payed_hist = np.ones(self.time_steps, dtype=np.int32)
         # Initial values of history arrays
         self.w_hist[:, 0] = self.w
         self.d_hist[:, 0] = self.d
@@ -70,6 +72,7 @@ class WorkForce():
         self.went_bankrupt_idx_hist[:, 0] = self.went_bankrupt_idx
         self.mutations_hist[0] = 0
         self.mu_hist[0] = self.mu
+        self.w_not_payed_hist[0] = self.W_not_payed
         
     
     def _store_values_in_history_arrays(self):
@@ -83,6 +86,8 @@ class WorkForce():
         self.went_bankrupt_idx_hist[:, self.current_time] = self.went_bankrupt_idx
         self.mu_hist[self.current_time] = self.mu
         self.mutations_hist[self.current_time] = np.sum(self.mutations_arr)
+        self.w_not_payed_hist[self.current_time] = self.W_not_payed
+        
         # Reset values for next step
         self.went_bankrupt = 0
         self.mu = self.system_money_spent

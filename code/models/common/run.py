@@ -64,6 +64,7 @@ class RunWorkForce(MethodsWorkForce):
                 del group["went_bankrupt_idx"]
                 del group["mu"]
                 del group["mutations"]
+                del group["w_not_payed"]
                 
             # Store data in group
             # Company
@@ -76,6 +77,7 @@ class RunWorkForce(MethodsWorkForce):
             group.create_dataset("went_bankrupt_idx", data=self.went_bankrupt_idx_hist)
             group.create_dataset("mu", data=self.mu_hist)
             group.create_dataset("mutations", data=self.mutations_hist)
+            group.create_dataset("w_not_payed", data=self.w_not_payed_hist)
             # Attributes
             group.attrs["N"] = self.N
             group.attrs["time_steps"] = self.time_steps

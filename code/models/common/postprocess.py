@@ -32,6 +32,7 @@ class PostProcess:
                 "went_bankrupt_idx": np.array(group.get("went_bankrupt_idx", None)),
                 "mu": np.array(group.get("mu", None)),
                 "mutations": np.array(group.get("mutations", None)),
+                "w_not_payed": np.array(group.get("w_not_payed"), None),
                 "peak_idx": np.array(group.get("peak_idx", None)),
                 "repeated_m_runs": np.array(group.get("repeated_m_runs", None)),
                 "N": np.array(group.attrs.get("N", None)),
@@ -67,6 +68,7 @@ class PostProcess:
         self.went_bankrupt_idx = data["went_bankrupt_idx"]
         self.mu = data["mu"]
         self.mutations = data["mutations"]
+        self.w_not_payed = data["w_not_payed"]
         self.N = data["N"]
         self.time_steps = data["time_steps"]
         self.W = data["W"]
@@ -455,7 +457,7 @@ class PostProcess:
             data = -np.diff(self.d, axis=1)
             colour_name = "debt"
         
-        s, = self._skip_values(data)
+        s = self._skip_values(data)
         s0 = s[:, time_point]
         # Eval points
         if np.any(s_lim == None):
