@@ -10,6 +10,7 @@ dir_path = path_to_file.parent.parent.parent
 dir_path_output = Path.joinpath(dir_path, "output")
 dir_path_image = Path.joinpath(dir_path, "images", "common")
 dir_path_image.mkdir(parents=True, exist_ok=True)
+dir_path_data = Path.joinpath(dir_path, "data")
 # File name and path
 file_name = "common.h5"
 file_path = dir_path_output / file_name
