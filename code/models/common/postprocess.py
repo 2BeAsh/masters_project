@@ -1,13 +1,14 @@
 import numpy as np
+import pandas as pd
 from scipy.signal import find_peaks, savgol_filter
-from scipy.ndimage import uniform_filter1d
 import scipy.special
+from scipy.ndimage import uniform_filter1d
 import scipy.signal
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker  
 import h5py
 from sklearn.neighbors import KernelDensity
-from run import file_path
+from run import dir_path_data, file_path
 import general_functions
 
 
@@ -144,7 +145,7 @@ class PostProcess:
             axis.set_xticklabels([])
 
 
-    def _axis_ticks_and_labels(self, axis, x_ticks, y_ticks, x_labels, y_labels, x_dtype=None, y_dtype=None):
+    def _axis_ticks_and_labels(self, axis, x_ticks, y_ticks, x_labels, y_labels, x_dtype=None, y_dtype=None, tick_width=1.8, tick_width_minor=1, tick_length=6, tick_length_minor=3):
         """Given an axis, set the ticks and labels for the x and y axis.
         
         Ticks that are in x_labels (or y_labels) are set as major ticks with labels,
@@ -198,6 +199,10 @@ class PostProcess:
         axis.set_yticklabels(major_y_labels)
         # Set minor ticks for the y-axis
         axis.set_yticks(minor_y, minor=True)
+        
+        # Set the tick size
+        axis.tick_params(axis="both", width=tick_width, length=tick_length, which="major")
+        axis.tick_params(axis="both", width=tick_width_minor, length=tick_length_minor, which="minor")
     
     
     def _axis_log_ticks_and_labels(self, axis, exponent_range, labels_skipped=1, numticks=10, base=10.0, which="y"):
@@ -227,7 +232,7 @@ class PostProcess:
             axis.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: r'${{10^{{{}}}}}$'.format(int(np.log10(x))) if x in [base**i for i in range(*exponent_range, labels_skipped+1)] else ''))
 
 
-    def time_from_negative_income_to_bankruptcy(self, skip_values, show_plot):
+    def time_from_negative_income_to_bankruptcy(self, show_plot):
         """For each company:
             - Find all times of bankruptcy using find_peaks to avoid counting multiple bankruptcies due to bad salary choice.
             - Find the time of all changes in income from negative to positive using find_peaks
@@ -241,7 +246,7 @@ class PostProcess:
         
         for i in range(self.N):            
             # Get the mean and std of the time from bottom to peak
-            bot_times, top_times = self._get_peak_pairs(i, skip_values, show_plot)
+            bot_times, top_times = self._get_peak_pairs(i, show_plot)
             time_from_bottom_to_peak = top_times - bot_times
             
             # Store values
@@ -250,22 +255,29 @@ class PostProcess:
         return np.concatenate(time_diff_arr)
             
             
-    def _get_peak_pairs(self, idx, skip_values, show_plot):
-        d_skipped = self.d[idx, skip_values:]
-        bot_height = np.abs(np.min(d_skipped) * 0.25)
-        bottom_idx, _ = find_peaks(-d_skipped, height=bot_height, distance=30, prominence=bot_height, width=25)  # Maybe play around with plateau size?
-        top_idx = np.where(self.went_bankrupt_idx[idx, skip_values:]==1)[0]
+    def _get_peak_pairs(self, x, show_plot, distance=30, width=25, top_height=None, bot_height=None, peak_prominence=None, trough_prominence=None):
+        x_min, x_max = x.min(), x.max()
+        if bot_height is None: bot_height = np.abs(x_min * 0.25)
+        if top_height is None: top_height = x_max * 0.75
+        if peak_prominence is None: peak_prominence = 0.25 * top_height
+        if trough_prominence is None: trough_prominence = 0.25 * bot_height
+        bottom_idx, _ = find_peaks(-x, height=bot_height, distance=distance, prominence=peak_prominence, width=width)  # Maybe play around with plateau size?
+        top_idx, _ = find_peaks(x, height=top_height, distance=distance, width=width, prominence=peak_prominence)
+        # top_idx = np.where(self.went_bankrupt_idx[idx, self.skip_values:]==1)[0]
         
         if show_plot:
             plt.figure()
-            plt.plot(np.arange(skip_values, self.time_steps), d_skipped, color="firebrick")
+            plt.plot(np.arange(self.skip_values, self.time_steps), x, color="black")
+            plt.title("Data")
             
-        # Check if there is any peaks
+        # Check if there are any peaks
         if len(bottom_idx) == 0 or len(top_idx) == 0:
+            print(f"{len(bottom_idx)} troughs and {len(top_idx)} peaks!")
             if show_plot:
+                # Shows the data alone
                 plt.show()
                 plt.close()
-            return np.array([])
+            return np.array([]), np.array([])
         
         # Need to make sure that bottom and top are equal in length
         top_idx = top_idx.tolist()
@@ -277,10 +289,11 @@ class PostProcess:
         # If the last peak is a bottom, remove it
         if bottom_idx[-1] > top_idx[-1]:
             bottom_idx = bottom_idx[:-1]
-        
+                
         # Need to check again if there are any peaks after removing end points
         if len(bottom_idx) == 0 or len(top_idx) == 0:
-            return np.array([])
+            print(f"{len(bottom_idx)} troughs and {len(top_idx)} peaks!")
+            return np.array([]), np.array([])
         
         # Go through all bottom peaks and check if all greater bottom peaks are closer to it than the nearest top peak.
         # Remove all bottom peaks that satisfy this
@@ -307,22 +320,21 @@ class PostProcess:
                 top_idx.pop(i_top)
             else:
                 i_top += 1
+
         top_idx = top_idx[:len(bottom_idx)]
         bottom_idx = bottom_idx[:len(top_idx)]
 
+
         if show_plot:
-            plt.plot(np.array(bottom_idx)+skip_values, d_skipped[bottom_idx], "o", color="green", markersize=5)
-            plt.plot(np.array(top_idx)+skip_values, d_skipped[top_idx], "o", color="red", markersize=5)
-            # plt.axvline(x=5360, ls="dashed", color="grey")
-            # plt.axvline(x=5600, ls="dashed", color="grey")
-            # plt.axvline(x=5840, ls="dashed", color="grey")
+            plt.plot(np.array(bottom_idx)+self.skip_values, x[bottom_idx], "<", color="red", markersize=5)
+            plt.plot(np.array(top_idx)+self.skip_values, x[top_idx], "^", color="green", markersize=5)
             plt.xlabel("Time")
-            plt.ylabel("Debt")
+            plt.ylabel("y")
             plt.grid()
-            plt.title("Debt first minima and bankruptcy")
+            plt.title("First minima and bankruptcy")
             plt.show()
             plt.close()
-                    
+            
         return bottom_idx, np.array(top_idx)
                 
         
@@ -500,6 +512,9 @@ class PostProcess:
         elif x_data == "delta_debt":
             x_data = -np.diff(self.d, axis=1)
             add_time = 1  # For delta_debt need to add an additional time step to account for the difference losing one
+        elif x_data == "workers":
+            x_data = self.w
+            
         data, time_steps = self._skip_values(x_data, self.time_steps-add_time)
         # Calculate points for the KDE to be evaulated at such that all times have the same evaluation points
         if np.any(data_lim == None):
@@ -738,9 +753,12 @@ class PostProcess:
             # Individual capital has an extra dimension and the calculation must be done seperately
             data = -self.d
             data = self._skip_values(data)
-            data[data < 1e-10] = 1e-10
-            r_individual = np.log(data[:, time_period:]) - np.log(data[:, :-time_period])
-            r = np.ravel(r_individual)
+            # Do not calculate the return of values below m
+            valid_mask = (data[:, :-1] >= self.m) & (data[:, 1:] >= self.m)  # Neighbouring columns must both be above m to calculate the difference
+            relative_diff = np.full((data.shape[0], data.shape[1]-1), np.nan)  # Create an empty array to be filled only the valid places
+            relative_diff[valid_mask] = np.log(data[:, time_period:][valid_mask]) - np.log(data[:, :-time_period][valid_mask])
+                        
+            r = np.ravel(relative_diff)
             return r
         else:
             print(f"{data_name} is an invalid data_name, must be 'mu', 'capital_sum', 'capital_individual_all' or 'capital_individual_mean'")
@@ -783,3 +801,131 @@ class PostProcess:
         kde.fit(x[:, None])
         P = np.exp(kde.score_samples(x_eval[:, None]))
         return x_eval, P
+    
+    
+    def _detect_recession_simple(self, window_size, peak_distance=15, peak_width=5, peak_height=None, trough_height=None, plot=False):
+        """Using find_peaks, finds the time of the recessions and their durations.
+        """
+        # Get data
+        self._get_data(self.group_name)
+        mu = self._skip_values(self.mu)
+
+        # Perform rolling average and divide by W
+        mu_rolling_averaged = uniform_filter1d(mu, size=window_size) / self.W
+                
+        # Find peaks
+        mu_min = mu_rolling_averaged.min()
+        mu_max = mu_rolling_averaged.max()
+
+        if peak_height is None:
+            peak_height = mu_min + (mu_max - mu_min) / 4
+        peaks, peak_info = find_peaks(mu_rolling_averaged, height=peak_height, distance=peak_distance, width=peak_width)
+        
+        # Find troughs
+        if trough_height is None:
+            trough_height = mu_max - (mu_max - mu_min) / 4
+        
+        troughs, trough_info = find_peaks(-mu_rolling_averaged, height=-peak_height, width=peak_width)
+        
+        if plot:
+            fig, ax = plt.subplots(figsize=(10, 7.5))
+            ax.plot(mu_rolling_averaged)
+            ax.plot(peaks, mu_rolling_averaged[peaks], "^")
+            ax.plot(troughs, mu_rolling_averaged[troughs], ">")
+            ax.set(xlabel="Time", ylabel="Price", title=r"Peaks in $\mu/W$")
+            plt.show()
+        
+        return peaks, troughs
+    
+    
+    def _detect_recession(self, window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot=False):
+        """Smooth (rolling mean) the mu data and find peak pairs in it.
+        """
+        # Load data
+        self._get_data(self.group_name)
+        mu = self._skip_values(self.mu)
+        
+        # Smooth mu and divide by W
+        mu_smooth = uniform_filter1d(mu, size=window_size) / self.W
+        
+        # Find the bottom of the smoothed mu curve using find_peaks. The distance between the peak and the trough is the recession duration
+        trough_times, peak_times = self._get_peak_pairs(mu_smooth, plot, peak_distance, peak_width, 
+                                                    top_height=peak_height, bot_height=trough_height, peak_prominence=peak_prominence, 
+                                                    trough_prominence=trough_prominence)
+        trough_times = trough_times[1:]
+        peak_times = peak_times[:-1]
+        
+        return trough_times, peak_times
+    
+    
+    def _recession_time_between_and_duration(self, window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot=False):
+        """
+        Get the times of the troughs and the peaks
+        Calculate the duraction of the recessions and the time between the recessions
+        Duration is time from peak to trough and period is the time between peaks
+        Args:
+            window_size (int, optional): _description_. Defaults to 10.
+            peak_distance (int, optional): _description_. Defaults to 15.
+            peak_width (int, optional): _description_. Defaults to 5.
+            peak_height (_type_, optional): _description_. Defaults to None.
+            trough_height (_type_, optional): _description_. Defaults to None.
+            peak_prominence (_type_, optional): _description_. Defaults to None.
+            trough_prominence (_type_, optional): _description_. Defaults to None.
+            plot (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            tupple (array, array): period, duration
+        """
+        # Get the times of the troughs and the peaks
+        troughs, peaks = self._detect_recession(window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot)
+        
+        # Calculate the duraction of the recessions and their frequency.
+        # Duration is time from peak to trough and period is time between peaks
+        time_between = np.diff(peaks)
+        duration = troughs - peaks
+        print("Total number of peaks: ", np.size(peaks))
+        print("Number of non-positive durations: ", np.count_nonzero(duration<=0))  # OBS this gives a non-zero number!
+        
+        return time_between, duration
+    
+    
+    def _load_recession_data(self):
+        file_name = "20210719_cycle_dates_pasted.csv"
+        file_path = dir_path_data / file_name
+        df = pd.read_csv(file_path, delimiter=",")
+        
+        # Remove rows with missing data
+        df.dropna(axis=0, inplace=True)
+        
+        # Convert the 'peak' and 'trough' columns to datetime
+        df["peak"] = pd.to_datetime(df["peak"])
+        df["trough"] = pd.to_datetime(df["trough"])
+        
+        # Calculate the difference in days between 'trough' and 'peak'
+        df["duration"] = (df["trough"] - df["peak"]).dt.days
+        
+        # Create a new column 'time_between' which is the time between consecutive 'peak' values
+        df["time_between"] = df["peak"].diff().dt.days
+        
+        return df
+    
+    
+    def _get_lifespan(self):
+        """For each company, find the number of time steps between two C=0 events i.e. birth to death
+        """
+        # Get data
+        self._get_data(self.group_name)
+        C = self._skip_values(-self.d)
+        
+        lifespan_all = []
+        
+        # Loop over companies        
+        for i in range(self.N):
+            C_comp = C[i, :]
+            C_is_0 = np.where(C_comp == 0)
+            life_spans = np.diff(C_is_0)
+            life_spans = life_spans[life_spans>1]  # If the company did not change its capital while at 0
+            lifespan_all.append(life_spans)
+                
+        return np.concatenate(lifespan_all)
+
