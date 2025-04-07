@@ -18,6 +18,7 @@ class MethodsWorkForce(WorkForce):
         self.mutation_method = update_methods["mutation"]
         self.transaction_method = update_methods["transaction_method"]
         self.include_bankrupt_salary_in_mu = update_methods["include_bankrupt_salary_in_mu"]
+        self.who_want_to_increase = update_methods["who_want_to_increase"]
         super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, time_steps, seed)
         
         # Initial values and choice of methods
@@ -31,6 +32,7 @@ class MethodsWorkForce(WorkForce):
         self._pick_worker_update_func()  
         self._pick_interest_update_func()
         self._pick_bankruptcy_func()
+        self._pick_want_to_increase()
 
 
     def _pick_worker_update_func(self):
@@ -88,77 +90,99 @@ class MethodsWorkForce(WorkForce):
             print("Bankruptcy method must be 'cannot_pay_salary' or 'negative_money'")
 
 
-    def _transaction(self):
-        # Use the salaries of last time step
-        salary_last_time = self.s_hist[:, self.current_time - 1]
-        # Pick the indices of the companies that will sell, Only w>0 companies perform transactions
-        number_of_companies_selling = np.sum(self.w > 0)
-        idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
-                        
-        # Find which companies that sells and how many times they do it
-        idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
-        # Find how much each of the chosen companies sell for
-        sell_unique = self.w[idx_unique] * self.mu / (self.W - self.W_not_payed)  
-        # Multiply that by how many times they sold
-        sell_unique_all = sell_unique * counts
-        # Update values
-        self.d[idx_unique] -= sell_unique_all
-        # Salary depends on "freelance" or not
-        
-        # Wage i.e. pay workers every time a job is done
-        if self.transaction_method == "wage":
-            # Do the same as with the capital, find unique and counts.
-            salary_unique = salary_last_time[idx_unique] * self.w[idx_unique]
-            salary_unique_all = salary_unique * counts
-            
-            if not self.include_bankrupt_salary_in_mu:
-                # If would go in positive debt from paying salaries, set debt to 1e-10 (just have to be >0) and don't pay the salary i.e. don't record it in mu.
-                # Get the indices of companies going bankrupt and not bankrupt
-                idx_goes_bankrupt = np.nonzero(self.d[idx_unique] + salary_unique_all > 0)
-                idx_not_bankrupt = np.nonzero(self.d[idx_unique] + salary_unique_all <= 0)
-                # Set debt of bankrupt to arbitrary small positive number triggering bankrupt criteria.
-                # Update the non-bankrupt companies as usual
-                self.d[idx_goes_bankrupt] = 1e-10  
-                salary_unique_all = salary_unique_all[idx_not_bankrupt]
-                self.d[idx_not_bankrupt] += salary_unique_all
-                
-                # Calculate the number of workers who did not receive payment
-                self.W_not_payed = np.sum(self.w[idx_goes_bankrupt])
-                # print("Number of companies not paying their workers:", len(idx_goes_bankrupt))
-                # print("Workers not payed:", self.W_not_payed)
-                
-            else:            
-                self.d[idx_unique] += salary_unique_all
-            
-            self.system_money_spent = salary_unique_all.sum()
-        
-        
-        # Salary i.e. pay workers every time step
-        elif self.transaction_method == "salary":
-            # Salary calculation
-            salary_payments = self.w * salary_last_time
-            
-            if not self.include_bankrupt_salary_in_mu:
-                # If would go in positive debt from paying salaries, set debt to 1e-10 (just have to be >0) and don't pay the salary i.e. don't record it in mu.
-                # Get the indices of companies going bankrupt and not bankrupt (we could perform the update to debt in one line, but want to update salaries as well)
-                idx_goes_bankrupt = np.nonzero(self.d + salary_payments > 0)
-                idx_not_bankrupt = np.nonzero(self.d + salary_payments <= 0)
-                
-                # Update values
-                salary_payments[idx_goes_bankrupt] = 0  # Do not count bankrupt companies in mu
-                self.d += salary_payments
-                self.d[idx_goes_bankrupt] = 1e-10
-                
-                # Calculate the number of workers who did not receive payment
-                self.W_not_payed = np.sum(self.w[idx_goes_bankrupt])
-                # print("Number of companies not paying their workers:", np.size(idx_goes_bankrupt))
-                # print("Workers not payed:", self.W_not_payed)
+    def _pick_want_to_increase(self):
+        """Pick the function that determines which companies update their salary.
+        """
+        if self.who_want_to_increase == "picked":
+            self._want_to_increase = self._only_picked_update_wage
+        elif self.who_want_to_increase == "w0":
+            self._want_to_increase = self._picked_and_w0_update_wage
+        elif self.who_want_to_increase == "all":
+            self._want_to_increase = self._non_picked_update_wage
+        else: 
+            print(f"{self.who_want_to_increase} is not a valid value for who_want_to_increase")
 
-            else:
-                # All companies pay salaries
-                self.d += salary_payments
+
+    def _transaction(self):
+        
+        if self.transaction_method == "deterministic":
+            # All companies are chosen to transact once, but in a random order
+            salary_last_time = self.s_hist[:, self.current_time - 1]
+            salary_payments = salary_last_time * self.w
+            sell_values = self.w * self.mu / self.W            
+            transaction_order = np.random.choice(np.arange(self.N), size=self.N, replace=False)
+            for idx in transaction_order:        
+                # Update
+                self.d[idx] += salary_payments[idx] + sell_values[idx]
+                
+            self.system_money_spent = salary_payments.sum()
+        
+        else:
+            # Use the salaries of last time step
+            salary_last_time = self.s_hist[:, self.current_time - 1]
+            # Pick the indices of the companies that will sell, Only w>0 companies perform transactions
+            number_of_companies_selling = np.sum(self.w > 0)
+            idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
+                            
+            # Find which companies that sells and how many times they do it
+            idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
+            # Find how much each of the chosen companies sell for
+            sell_unique = self.w[idx_unique] * self.mu / (self.W - self.W_not_payed)  
+            # Multiply that by how many times they sold
+            sell_unique_all = sell_unique * counts
+            # Update values
+            self.d[idx_unique] -= sell_unique_all
+            # Salary depends on "freelance" or not
             
-            self.system_money_spent = salary_payments.sum()    
+            # Wage i.e. pay workers every time a job is done
+            if self.transaction_method == "wage":
+                # Do the same as with the capital, find unique and counts.
+                salary_unique = salary_last_time[idx_unique] * self.w[idx_unique]
+                salary_unique_all = salary_unique * counts
+                
+                if not self.include_bankrupt_salary_in_mu:
+                    # If would go in positive debt from paying salaries, set debt to 1e-10 (just have to be >0) and don't pay the salary i.e. don't record it in mu.
+                    # Get the indices of companies going bankrupt and not bankrupt
+                    idx_goes_bankrupt = np.nonzero(self.d[idx_unique] + salary_unique_all > 0)
+                    idx_not_bankrupt = np.nonzero(self.d[idx_unique] + salary_unique_all <= 0)
+                    # Set debt of bankrupt to arbitrary small positive number triggering bankrupt criteria.
+                    # Update the non-bankrupt companies as usual
+                    self.d[idx_goes_bankrupt] = 1e-10  
+                    salary_unique_all = salary_unique_all[idx_not_bankrupt]
+                    self.d[idx_not_bankrupt] += salary_unique_all
+                    
+                    # Calculate the number of workers who did not receive payment
+                    self.W_not_payed = np.sum(self.w[idx_goes_bankrupt])
+                    
+                else:            
+                    self.d[idx_unique] += salary_unique_all
+                
+                self.system_money_spent = salary_unique_all.sum()
+        
+            # Salary i.e. pay workers every time step
+            elif self.transaction_method == "salary":
+                # Salary calculation
+                salary_payments = self.w * salary_last_time
+                
+                if not self.include_bankrupt_salary_in_mu:
+                    # If would go in positive debt from paying salaries, set debt to 1e-10 (just have to be >0) and don't pay the salary i.e. don't record it in mu.
+                    # Get the indices of companies going bankrupt and not bankrupt (we could perform the update to debt in one line, but want to update salaries as well)
+                    idx_goes_bankrupt = np.nonzero(self.d + salary_payments > 0)
+                    idx_not_bankrupt = np.nonzero(self.d + salary_payments <= 0)
+                    
+                    # Update values
+                    salary_payments[idx_goes_bankrupt] = 0  # Do not count bankrupt companies in mu
+                    self.d += salary_payments
+                    self.d[idx_goes_bankrupt] = 1e-10
+                    
+                    # Calculate the number of workers who did not receive payment
+                    self.W_not_payed = np.sum(self.w[idx_goes_bankrupt])
+
+                else:
+                    # All companies pay salaries
+                    self.d += salary_payments
+                
+                self.system_money_spent = salary_payments.sum()    
                 
 
     def _transaction_worker(self):
@@ -192,32 +216,6 @@ class MethodsWorkForce(WorkForce):
         money_spent_on_interest = self.d[positive_debt_idx] * self.r
         self.d[positive_debt_idx] += money_spent_on_interest
           
-        
-    def _update_salary_C_system(self):
-    # def _update_salary(self):
-        """Companies adjust their salary according to their own profit criteria, but also the overall trend in the economy.
-        """
-        # System capital change
-        d_sum_last_step = self.d_hist[:, self.current_time-1].sum()
-        d_rel_change = (self.d.sum() - d_sum_last_step) / d_sum_last_step
-        salary_increase_economy = self.salary * (d_rel_change) 
-        
-        # Individual companies
-        negative_correction = 1 / (1 + self.ds)
-        ds_pos = self.salary * self.ds
-        ds_neg = self.salary * (- self.ds) * negative_correction
-        want_to_increase = self.d - self.d_hist[:, self.current_time-1] <= 0
-        salary_increase_individual = np.where(want_to_increase, ds_pos, ds_neg)
-        
-        # print("Capital last step: ", -d_sum_last_step)
-        # print("Capital relative change ", d_rel_change)
-        # print("Salary increase individual: ", salary_increase_individual[::25])
-                
-        # Perform update, summing the individual and economy contributions. 
-        # Enforce minimum salary        
-        self.salary += salary_increase_individual + salary_increase_economy
-        self.salary = np.maximum(self.salary, self.salary_min)
-
 
     # the usual one:
     def _update_salary(self):
@@ -228,10 +226,13 @@ class MethodsWorkForce(WorkForce):
         ds_pos = self.salary * (1 + self.ds)
         ds_neg = self.salary * (1 - self.ds * negative_correction)
         # Find who wants to increase i.e. who lowered their debt
-        want_to_increase = self.d - self.d_hist[:, self.current_time - 1] <= 0
+        want_to_increase = self._want_to_increase()
+        want_to_decrease = self.d - self.d_hist[:, self.current_time - 1] > 0        
         # Perform update and enforce minimum salary
-        self.salary = np.where(want_to_increase, ds_pos, ds_neg)
+        self.salary[want_to_increase] = ds_pos[want_to_increase]
+        self.salary[want_to_decrease] = ds_neg[want_to_decrease]
         self.salary = np.maximum(self.salary, self.salary_min)            
+        # self.salary = np.where(want_to_increase, ds_pos, ds_neg)
     
     
     def _update_salary_mutate(self):
@@ -312,7 +313,7 @@ class MethodsWorkForce(WorkForce):
         self.went_bankrupt = self.went_bankrupt_idx.sum()
         # Reset values / create new companies
         self.w[self.went_bankrupt_idx] = 0
-        self.d[self.went_bankrupt_idx] = 0
+        self.d[self.went_bankrupt_idx] = 0 #-self.mutation_magnitude
         self.func_bankrupt_salary(self.went_bankrupt_idx)
         self.salary = np.maximum(self.salary, self.salary_min)
         
@@ -551,6 +552,30 @@ class MethodsWorkForce(WorkForce):
         mutations = np.random.uniform(-self.mutation_magnitude / (1 + np.abs(self.mutation_magnitude)), self.mutation_magnitude, size=self.went_bankrupt)
         self.salary[bankrupt_idx] = self.salary[idx_new_salary] * (1 + mutations)
         
+        
+    def _only_picked_update_wage(self):
+        """ Only companies that were picked to transact updates their salary
+        Returns:
+            _type_: _description_
+        """
+        
+        return self.d - self.d_hist[:, self.current_time - 1] < 0
+    
+    
+    def _picked_and_w0_update_wage(self):
+        """Companies that were picked to transact or companies with w=0 updates their salary
+        """
+        transact = self.d - self.d_hist[:, self.current_time - 1] < 0
+        w0 = self.w == 0
+        both = np.logical_or(transact, w0)  # Either transacted or you have zero workers.
+        return both
+    
+    
+    def _non_picked_update_wage(self):
+        """Companies not picked to transact also update wages        
+        """
+        return self.d - self.d_hist[:, self.current_time - 1] <= 0
+
 
     def _update_rf(self):
         """The interest rate is updated based on the percent change in mu.
