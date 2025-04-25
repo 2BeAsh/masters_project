@@ -55,17 +55,13 @@ class RunWorkForce(MethodsWorkForce):
                 group = file.create_group(self.group_name)
             
             # If any of the data already exists, delete all of them (if one is present, all of them are present)
-            if "w" in group:
-                del group["w"]
-                del group["d"]
-                del group["s"]
-                
-                del group["r"]
-                del group["went_bankrupt"]
-                del group["went_bankrupt_idx"]
-                del group["mu"]
-                del group["mutations"]
-                del group["w_not_payed"]
+            # Delete existing datasets if present
+            for name in [
+                "w", "d", "s", "r", "went_bankrupt", "went_bankrupt_idx",
+                "mu", "mutations", "w_paid"
+            ]:
+                if name in group:
+                    del group[name]
                 
             # Store data in group
             # Company
@@ -78,7 +74,7 @@ class RunWorkForce(MethodsWorkForce):
             group.create_dataset("went_bankrupt_idx", data=self.went_bankrupt_idx_hist)
             group.create_dataset("mu", data=self.mu_hist)
             group.create_dataset("mutations", data=self.mutations_hist)
-            group.create_dataset("w_not_payed", data=self.w_not_payed_hist)
+            group.create_dataset("w_paid", data=self.w_paid_hist)
             # Attributes
             group.attrs["N"] = self.N
             group.attrs["time_steps"] = self.time_steps
