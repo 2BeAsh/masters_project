@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pandas_datareader.data as web
 from scipy.signal import find_peaks, savgol_filter
 import scipy.special
 from scipy.ndimage import uniform_filter1d
@@ -7,9 +8,11 @@ import scipy.signal
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker  
 import h5py
+import re
 from sklearn.neighbors import KernelDensity
-from run import dir_path_data, file_path
+from run import dir_path_data, file_path, dir_path_output
 import general_functions
+import yfinance as yf
 
 
 class PostProcess:
@@ -33,7 +36,7 @@ class PostProcess:
                 "went_bankrupt_idx": np.array(group.get("went_bankrupt_idx", None)),
                 "mu": np.array(group.get("mu", None)),
                 "mutations": np.array(group.get("mutations", None)),
-                "w_not_payed": np.array(group.get("w_not_payed"), None),
+                "w_paid": np.array(group.get("w_paid"), None),
                 "peak_idx": np.array(group.get("peak_idx", None)),
                 "repeated_m_runs": np.array(group.get("repeated_m_runs", None)),
                 "N": np.array(group.attrs.get("N", None)),
@@ -69,7 +72,7 @@ class PostProcess:
         self.went_bankrupt_idx = data["went_bankrupt_idx"]
         self.mu = data["mu"]
         self.mutations = data["mutations"]
-        self.w_not_payed = data["w_not_payed"]
+        self.w_paid = data["w_paid"]
         self.N = data["N"]
         self.time_steps = data["time_steps"]
         self.W = data["W"]
@@ -145,64 +148,66 @@ class PostProcess:
             axis.set_xticklabels([])
 
 
-    def _axis_ticks_and_labels(self, axis, x_ticks, y_ticks, x_labels, y_labels, x_dtype=None, y_dtype=None, tick_width=1.8, tick_width_minor=1, tick_length=6, tick_length_minor=3):
-        """Given an axis, set the ticks and labels for the x and y axis.
+    def _axis_ticks_and_labels(self, axis,
+                            x_ticks=None, y_ticks=None,
+                            x_labels=None, y_labels=None,
+                            x_dtype=None, y_dtype=None,
+                            tick_width=1.6, tick_width_minor=0.8,
+                            tick_length=6, tick_length_minor=3):
+        """Set major and minor ticks and labels for both axes.
         
-        Ticks that are in x_labels (or y_labels) are set as major ticks with labels,
-        while ticks not in those lists are set as minor ticks (without labels).
-
-        Args:
-            axis: The Matplotlib axis to modify.
-            x_ticks (list of numbers): Tick positions for the x axis.
-            y_ticks (list of numbers): Tick positions for the y axis.
-            x_labels (list): Tick positions (a subset of x_ticks) that should have labels.
-            y_labels (list): Tick positions (a subset of y_ticks) that should have labels.
-            x_dtype (str, optional): "int" for integer formatting on x axis.
-            y_dtype (str, optional): "int" for integer formatting on y axis.
+        - x_labels/y_labels can be a list of tick values (auto labels)
+        or a dict mapping tick values to custom label strings.
         """
-        # Process x-axis ticks:
-        major_x = []
-        major_x_labels = []
-        minor_x = []
-        for tick in x_ticks:
-            if tick in x_labels:
-                major_x.append(tick)
-                if x_dtype == "int":
-                    major_x_labels.append(f"{int(tick)}")
+        # Handle x-axis
+        if np.all(x_ticks != None) and np.all(x_labels != None):
+            major_x, major_x_labels, minor_x = [], [], []
+            for tick in x_ticks:
+                if isinstance(x_labels, dict):
+                    if tick in x_labels:
+                        major_x.append(tick)
+                        major_x_labels.append(x_labels[tick])
+                    else:
+                        minor_x.append(tick)
+                elif tick in x_labels:
+                    major_x.append(tick)
+                    if x_dtype == "int":
+                        major_x_labels.append(f"{int(tick)}")
+                    else:
+                        major_x_labels.append(f"{tick}")
                 else:
-                    major_x_labels.append(f"{tick}")
-            else:
-                minor_x.append(tick)
-        
-        # Process y-axis ticks:
-        major_y = []
-        major_y_labels = []
-        minor_y = []
-        for tick in y_ticks:
-            if tick in y_labels:
-                major_y.append(tick)
-                if y_dtype == "int":
-                    major_y_labels.append(f"{int(tick)}")
+                    minor_x.append(tick)
+            # Set ticks and labels
+            axis.set_xticks(major_x)
+            axis.set_xticklabels(major_x_labels)
+            axis.set_xticks(minor_x, minor=True)
+
+        # Handle y-axis
+        if np.all(y_ticks != None) and np.all(y_labels != None):
+            major_y, major_y_labels, minor_y = [], [], []
+            for tick in y_ticks:
+                if isinstance(y_labels, dict):
+                    if tick in y_labels:
+                        major_y.append(tick)
+                        major_y_labels.append(y_labels[tick])
+                    else:
+                        minor_y.append(tick)
+                elif tick in y_labels:
+                    major_y.append(tick)
+                    if y_dtype == "int":
+                        major_y_labels.append(f"{int(tick)}")
+                    else:
+                        major_y_labels.append(f"{tick}")
                 else:
-                    major_y_labels.append(f"{tick}")
-            else:
-                minor_y.append(tick)
-        
-        # Set major ticks and labels for the x-axis
-        axis.set_xticks(major_x)
-        axis.set_xticklabels(major_x_labels)
-        # Set minor ticks for the x-axis (by default, no labels are shown for minor ticks)
-        axis.set_xticks(minor_x, minor=True)
-        
-        # Set major ticks and labels for the y-axis
-        axis.set_yticks(major_y)
-        axis.set_yticklabels(major_y_labels)
-        # Set minor ticks for the y-axis
-        axis.set_yticks(minor_y, minor=True)
-        
-        # Set the tick size
+                    minor_y.append(tick)
+            # Set ticks and labels
+            axis.set_yticks(major_y)
+            axis.set_yticklabels(major_y_labels)
+            axis.set_yticks(minor_y, minor=True)
+
         axis.tick_params(axis="both", width=tick_width, length=tick_length, which="major")
         axis.tick_params(axis="both", width=tick_width_minor, length=tick_length_minor, which="minor")
+
     
     
     def _axis_log_ticks_and_labels(self, axis, exponent_range, labels_skipped=1, numticks=10, base=10.0, which="y"):
@@ -253,33 +258,134 @@ class PostProcess:
             time_diff_arr[i] = time_from_bottom_to_peak
             
         return np.concatenate(time_diff_arr)
+
+
+    def _get_peak_pairs_single_loop(self, x, distance, width, peak_height, trough_height, peak_prominence, trough_prominence):
+        """
+        Loop i over peak pairs. Let n be the number of troughs between the two peaks.
+        if n == 0: Add the peak with the highest x value to peak_new. If the highest peak is the left peak, only increase the right peak.
+        if n == 1: Add i'th peak to peak_new and the single trough to trough_new. i += 1
+        if n > 1: Add i'th peak to peak_new and the lowest trough to trough_new. i += 1
+        
+        Args:
+            x (_type_): _description_
+            distance (_type_): _description_
+            width (_type_): _description_
+            peak_height (_type_): _description_
+            trough_height (_type_): _description_
+            peak_prominence (_type_): _description_
+            trough_prominence (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        
+        peak_idx, _ = find_peaks(x, distance=distance, width=width, height=peak_height, prominence=peak_prominence)
+        trough_idx, _ = find_peaks(-x, distance=distance, width=width, height=trough_height, prominence=trough_prominence)
+        # Check if there are any peaks, if not, return
+        if np.size(peak_idx)  == 0 or np.size(trough_idx) == 0:
+            print("No peaks or troughs found, returning empty arrays")
+            return np.array([]), np.array([])
+        
+        peak_new = []
+        trough_new = []
+        
+        i = 0        
+        max_idx = len(peak_idx) - 1  # -1 such that left index is the second last element.
+        while i < max_idx:
+            # Get the peak pair. The right peak is the first peak chosen such that there are any troughs between the pair
+            peak_left = peak_idx[i]
+            n_troughs_between_pair = 0
+            idx_right = i
+            while n_troughs_between_pair == 0:
+                idx_right += 1
+                
+                # Check if has reached the end, in which case return
+                if idx_right == max_idx:
+                    return np.array(peak_new), np.array(trough_new)
+                
+                peak_right = peak_idx[idx_right]
+                # Count the number of troughs between the pair
+                troughs_between_bool = np.logical_and(trough_idx > peak_left, trough_idx < peak_right)
+                troughs_between_idx = trough_idx[troughs_between_bool]  # Transform to x-idx space
+                n_troughs_between_pair = np.size(troughs_between_idx)
+            # If there are more than two peaks, only keep the first
+            possible_peaks = peak_idx[i:idx_right+1]  # Include the right peak thus +1
+            if len(possible_peaks) > 2:            
+                tallest_peak_idx = np.argmax(x[possible_peaks[:-1]])  # Do not include the rightmost peak
+                peak_to_append = possible_peaks[tallest_peak_idx]
+            else:
+                peak_to_append = peak_left
+            # Only include the lowest trough
+            lowest_trough_idx = np.argmin(x[troughs_between_idx])
+            lowest_trough = troughs_between_idx[lowest_trough_idx]
+            # Add them to the lists
+            peak_new.append(peak_to_append)
+            trough_new.append(lowest_trough)
+            # Update i
+            i = idx_right
+        
+        return np.array(peak_new), np.array(trough_new)
+        
+        
+        # i = 0        
+        # max_idx = len(peak_idx) - 1
+        # while i < max_idx:
+        #     # Get the peak pair
+        #     peak_left = peak_idx[idx_left]
+        #     peak_right = peak_idx[idx_right]
+        #     # Get all troughs between the two
+        #     troughs_between = np.logical_and(trough_idx > peak_left, trough_idx < peak_right)  # n in the above pseudocode
+        #     troughs_between_idx = trough_idx[troughs_between]
+        #     n_troughs_between = np.size(troughs_between_idx)
+        #     # Update based on the number of troughs between the pair
+        #     if n_troughs_between == 0:
+        #         if x[peak_left] > x[peak_right]:
+        #             peak_idx = np.delete(peak_idx, peak_right)  # Need to remove the right peak such that we
+        #             peak_new.append(peak_left)
+        #             idx_right += 1
+        #         else:
+        #             peak_new.append(peak_right)
+                    
+                
+        #     elif n_troughs_between == 1:
+        #         peak_new.append(peak_left)
+        #         trough_new.append(troughs_between_idx[0])
+        #         i += 1
+        #     else:  # troughs_between > 1
+        #         trough_lowest = np.min(troughs_between_idx)
+        #         peak_new.append(peak_left)
+        #         trough_new.append(trough_lowest)
+                
+        #         i += 1
+            # print(f"{i} / {max_i}")
+        
+        # return np.array(peak_new), np.array(trough_new)
+                
             
-            
-    def _get_peak_pairs(self, x, show_plot, distance=30, width=25, top_height=None, bot_height=None, peak_prominence=None, trough_prominence=None):
+    def _get_peak_pairs(self, x, distance=30, width=25, top_height=None, bot_height=None, peak_prominence=None, trough_prominence=None):
         x_min, x_max = x.min(), x.max()
         if bot_height is None: bot_height = np.abs(x_min * 0.25)
         if top_height is None: top_height = x_max * 0.75
         if peak_prominence is None: peak_prominence = 0.25 * top_height
         if trough_prominence is None: trough_prominence = 0.25 * bot_height
-        bottom_idx, _ = find_peaks(-x, height=bot_height, distance=distance, prominence=peak_prominence, width=width)  # Maybe play around with plateau size?
-        top_idx, _ = find_peaks(x, height=top_height, distance=distance, width=width, prominence=peak_prominence)
-        # top_idx = np.where(self.went_bankrupt_idx[idx, self.skip_values:]==1)[0]
+        top_idx, _ = find_peaks(x, height=top_height, distance=distance, prominence=peak_prominence, width=width)
+        bottom_idx, _ = find_peaks(-x, height=bot_height, distance=distance, prominence=trough_prominence, width=width)  # Maybe play around with plateau size?
         
-        if show_plot:
-            plt.figure()
-            plt.plot(np.arange(self.skip_values, self.time_steps), x, color="black")
-            plt.title("Data")
-            
-        # Check if there are any peaks
+        fig, ax = plt.subplots(figsize=(16, 8))
+        ax.plot(x, c="black")
+        ax.plot(bottom_idx, x[bottom_idx], "<", c="red")
+        ax.plot(top_idx, x[top_idx], "^", c="green")
+        ax.grid()
+        plt.show()
+        
+        
+        # Check if there are no peaks
         if len(bottom_idx) == 0 or len(top_idx) == 0:
             print(f"{len(bottom_idx)} troughs and {len(top_idx)} peaks!")
-            if show_plot:
-                # Shows the data alone
-                plt.show()
-                plt.close()
             return np.array([]), np.array([])
         
-        # Need to make sure that bottom and top are equal in length
+        # Convert top indices to list to easier manipulate it        
         top_idx = top_idx.tolist()
         
         # If the first peak is a top, remove it
@@ -324,17 +430,6 @@ class PostProcess:
         top_idx = top_idx[:len(bottom_idx)]
         bottom_idx = bottom_idx[:len(top_idx)]
 
-
-        if show_plot:
-            plt.plot(np.array(bottom_idx)+self.skip_values, x[bottom_idx], "<", color="red", markersize=5)
-            plt.plot(np.array(top_idx)+self.skip_values, x[top_idx], "^", color="green", markersize=5)
-            plt.xlabel("Time")
-            plt.ylabel("y")
-            plt.grid()
-            plt.title("First minima and bankruptcy")
-            plt.show()
-            plt.close()
-            
         return bottom_idx, np.array(top_idx)
                 
         
@@ -729,7 +824,7 @@ class PostProcess:
         """_summary_
 
         Args:
-            data_name (str): What variable to use for the return calculation. Must be "mu", "capital_sum" or "capital_individual_mean".
+            data_name (str): What variable to use for the return calculation. Must be "mu", "capital_sum" or "capital_individual_mean", capital_individual_all.
             time_period (int): Shift in time for the return calculation, equal to tau in: log(p(t + tau)) - log(p(t)).
 
         Returns:
@@ -838,27 +933,62 @@ class PostProcess:
         return peaks, troughs
     
     
-    def _detect_recession(self, window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot=False):
+    def _detect_recession_single_loop(self, window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot=False):
         """Smooth (rolling mean) the mu data and find peak pairs in it.
         """
         # Load data
         self._get_data(self.group_name)
-        mu = self._skip_values(self.mu)
+        mu, time = self._skip_values(self.mu, self.time_values)
         
         # Smooth mu and divide by W
         mu_smooth = uniform_filter1d(mu, size=window_size) / self.W
         
         # Find the bottom of the smoothed mu curve using find_peaks. The distance between the peak and the trough is the recession duration
-        trough_times, peak_times = self._get_peak_pairs(mu_smooth, plot, peak_distance, peak_width, 
+        peak_times, trough_times = self._get_peak_pairs_single_loop(mu_smooth, peak_distance, peak_width, 
+                                                    peak_height=peak_height, trough_height=trough_height, peak_prominence=peak_prominence, 
+                                                    trough_prominence=trough_prominence)
+        if plot:
+            fig, ax = plt.subplots(figsize=(16, 8), dpi=300)
+            ax.plot(time, mu_smooth, c="black")
+            ax.plot(trough_times+self.skip_values, mu_smooth[trough_times], "<", c="red")
+            ax.plot(peak_times+self.skip_values, mu_smooth[peak_times], "^", c="green")
+            ax.set(xlabel="Time", ylabel=r"$\mu$", title=r"Detecting peaks in $\mu$")
+            ax.grid()
+            plt.show()
+        
+        return trough_times, peak_times
+    
+    
+    def _detect_recession(self, window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot=False):
+        """Smooth (rolling mean) the mu data and find peak pairs in it.
+        """
+        # Load data
+        self._get_data(self.group_name)
+        mu, time = self._skip_values(self.mu, self.time_values)
+        
+        # Smooth mu and divide by W
+        mu_smooth = uniform_filter1d(mu, size=window_size) / self.W
+        
+        # Find the bottom of the smoothed mu curve using find_peaks. The distance between the peak and the trough is the recession duration
+        trough_times, peak_times = self._get_peak_pairs(mu_smooth, peak_distance, peak_width, 
                                                     top_height=peak_height, bot_height=trough_height, peak_prominence=peak_prominence, 
                                                     trough_prominence=trough_prominence)
         trough_times = trough_times[1:]
         peak_times = peak_times[:-1]
         
+        if plot:
+            fig, ax = plt.subplots(figsize=(16, 8), dpi=300)
+            ax.plot(time, mu_smooth, c="black")
+            ax.plot(trough_times+self.skip_values, mu_smooth[trough_times], "<", c="red")
+            ax.plot(peak_times+self.skip_values, mu_smooth[peak_times], "^", c="green")
+            ax.set(xlabel="Time", ylabel=r"$\mu$", title=r"Detecting peaks in $\mu$")
+            ax.grid()
+            plt.show()
+        
         return trough_times, peak_times
     
     
-    def _recession_time_between_and_duration(self, window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot=False):
+    def _recession_time_between_and_duration(self, window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot=False, return_peaks=False):
         """
         Get the times of the troughs and the peaks
         Calculate the duraction of the recessions and the time between the recessions
@@ -877,38 +1007,211 @@ class PostProcess:
             tupple (array, array): period, duration
         """
         # Get the times of the troughs and the peaks
-        troughs, peaks = self._detect_recession(window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot)
+        troughs, peaks = self._detect_recession_single_loop(window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot)
         
         # Calculate the duraction of the recessions and their frequency.
         # Duration is time from peak to trough and period is time between peaks
         time_between = np.diff(peaks)
         duration = troughs - peaks
-        print("Total number of peaks: ", np.size(peaks))
-        print("Number of non-positive durations: ", np.count_nonzero(duration<=0))  # OBS this gives a non-zero number!
+
+        print("Total number of peak pairs: ", np.size(peaks))        
+        negative_durations_positions = np.where(duration < 0)[0]
+        number_of_negative_durations = np.size(negative_durations_positions)
+        if number_of_negative_durations > 0:
+            print(f"Warning: Detected {number_of_negative_durations} negative durations at indices:")
+            print(negative_durations_positions)
+        
+        if return_peaks:
+            return time_between, duration, troughs, peaks
         
         return time_between, duration
     
     
-    def _load_recession_data(self):
+    def _save_recession_results(self, peak_kwargs):
+        time_between, duration = self._recession_time_between_and_duration(**peak_kwargs)
+        filename = dir_path_output / f"recession_results_{self.group_name}.npz"
+        np.savez(file=filename, time_between=time_between, duration=duration)
+    
+    
+    def _load_recession_results(self):
+        filename = dir_path_output / f"recession_results_{self.group_name}.npz"
+        try:
+            with np.load(filename) as data:
+                time_between = data["time_between"]
+                duration = data["duration"]
+                return time_between, duration
+        except FileNotFoundError:
+            print(f"Error: No data found for {self.group_name}. Returning empty arrays")
+            print("Did you forget to run _save_recession_results?")
+            return np.array([]), np.array([])
+    
+    
+    def _load_lifespan_data(self):
+        """Load the company mortality data read from https://royalsocietypublishing.org/cms/asset/fabe4e8a-b0a6-47ae-a333-6f4c3753dc51/rsif20150120f02.jpg
+
+        Returns:
+            (lifespan, counts): How long companies live and the number of companies at that lifetime
+        """
+        name = "Final_Cleaned_and_Calibrated_Data.csv"
+        file_path = dir_path_data / name  
+        data = np.genfromtxt(file_path, delimiter=",")
+        lifespan = data[:, 0]
+        counts = data[:, 1]
+        return lifespan, counts
+        
+        
+    def _load_recession_data(self, separate_post_war=False):
+        """Load and preprocess NBER recession data
+
+        Args:
+            separate_post_war (bool): If True, return both all data and post-WWII data separately.
+
+        Returns:
+            If separate_post_war is False:
+                (time_between, duration): All recession data.
+            If separate_post_war is True:
+                ((time_between_all, duration_all), (time_between_postwar, duration_postwar))
+        """
         file_name = "20210719_cycle_dates_pasted.csv"
         file_path = dir_path_data / file_name
         df = pd.read_csv(file_path, delimiter=",")
-        
+
         # Remove rows with missing data
         df.dropna(axis=0, inplace=True)
-        
+
         # Convert the 'peak' and 'trough' columns to datetime
         df["peak"] = pd.to_datetime(df["peak"])
         df["trough"] = pd.to_datetime(df["trough"])
-        
-        # Calculate the difference in days between 'trough' and 'peak'
+
+        # Calculate duration of each recession
         df["duration"] = (df["trough"] - df["peak"]).dt.days
-        
-        # Create a new column 'time_between' which is the time between consecutive 'peak' values
+
+        # Time between consecutive recessions (peaks)
         df["time_between"] = df["peak"].diff().dt.days
-        
-        return df
+
+        if not separate_post_war:
+            return df["time_between"].dropna(), df["duration"]
+        else:
+            postwar_start = pd.Timestamp("1946-01-01")
+            df_post = df[df["peak"] >= postwar_start].copy()
+
+            return (
+                (df["time_between"].dropna(), df["duration"]),
+                (df_post["time_between"].dropna(), df_post["duration"]),
+            )
     
+
+    def _load_company_size_data(self, interval=True):
+        """Load and preprocess the CENSUR company size data.
+
+        Returns:
+            (labels, counts): Company size intervals and the number of companies in the intervals
+        """
+        file_name = "us_state_naics_detailedsizes_2021.csv"
+        file_path = dir_path_data / file_name
+        df = pd.read_csv(file_path, delimiter=",")
+
+        # Filter to 'Total' sector
+        df = df[
+            (df["NAICSDSCR"] == "Total") &
+            (df["STATEDSCR"] == "United States") &
+            (df["NAICS"] == "--") &
+            (df["STATE"] == 0)
+        ]
+        # Remove the rows with: "<20", "<500", "Total"
+        labels_not_allowed = ["06: <20", "19: <500", "01: Total"]
+        labels = []
+        counts = []
+        for _, row in df.iterrows():
+            label = row["ENTRSIZEDSCR"]
+            count = row["FIRM"]
+            
+            if label in labels_not_allowed:
+                continue
+            
+            # Structure is e.g. 08: 25-29, 02: <5
+            # For all: remove the first 3 entries, strip whitespace
+            # Then take care of the special case of <5
+            label = label[3:].strip()
+            if not interval:
+                label = label.split("-")[0] 
+            label = label.replace(",", "")  # Large numbers are written as e.g. 5,000
+
+            labels.append(label)
+            counts.append(count)
+        
+        return labels, counts
+
+
+    def _prepare_firm_size_pmf(self, upper_limit=10_000, normalize=True):
+        """
+        Maps irregular firm size bins to power-of-3 width bins, computes
+        adjusted frequencies (count / bin width), and returns geometric bin centers.
+        
+        Parameters:
+            labels (list of str): firm size bin labels (e.g., "5-9", "<5", "5,000+")
+            counts (list of int): firm counts in each bin
+        
+        Returns:
+            centers (np.ndarray): geometric mean of bin edges
+            pmf (np.ndarray): adjusted frequency (counts / width)
+        """
+        # Get data
+        labels, counts = self._load_company_size_data(interval=True)
+        
+        # Define power-of-3 bin edges: [1, 4, 10, 28, 82, 244, 730, ...]
+        bin_edges = [1]
+        while bin_edges[-1] < upper_limit:
+            bin_edges.append(bin_edges[-1] * 3)
+
+        # Initialize count accumulator per bin
+        binned_counts = np.zeros(len(bin_edges) - 1)
+
+        # Helper: convert label to numeric range
+        def parse_label(label):
+            label = label.replace(",", "")
+            if "-" in label:
+                low, high = map(int, label.split("-"))
+            elif label.startswith("<"):
+                low = 0
+                high = int(label[1:])
+            elif label.endswith("+"):
+                low = int(label[:-1])
+                high = upper_limit  # assume an arbitrary upper bound
+            else:
+                return None
+            return low, high
+
+        # Bin the original counts
+        for label, count in zip(labels, counts):
+            bounds = parse_label(label)
+            if not bounds:
+                continue
+            low, high = bounds
+
+            # Distribute count across all power-of-3 bins that intersect the label
+            for i in range(len(bin_edges) - 1):
+                b_low = bin_edges[i]
+                b_high = bin_edges[i + 1]
+                overlap_low = max(low, b_low)
+                overlap_high = min(high, b_high)
+                overlap = max(0, overlap_high - overlap_low)
+                width = high - low
+                if overlap > 0 and width > 0:
+                    # Proportionally assign part of the count to this bin
+                    binned_counts[i] += count * (overlap / width)
+
+        # Compute adjusted frequency and geometric bin center
+        centers = np.sqrt(np.array(bin_edges[:-1]) * np.array(bin_edges[1:]))
+        widths = np.diff(bin_edges)
+        pmf = binned_counts / widths
+        
+        if normalize:
+            area = np.sum(pmf * widths)
+            pmf /= area  # normalize so area = 1
+
+        return centers, pmf
+
     
     def _get_lifespan(self):
         """For each company, find the number of time steps between two C=0 events i.e. birth to death
@@ -928,4 +1231,147 @@ class PostProcess:
             lifespan_all.append(life_spans)
                 
         return np.concatenate(lifespan_all)
+    
+    
+    def _get_sp500_constituents(self):
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        tables = pd.read_html(url)
+        df = tables[0]  # First table is the one you want
+        return df["Symbol"].tolist()
 
+
+    def _save_sp500_asset_return(self, change_days=10):
+        # Get all 503 tickers from Wikipedia, download prices, remove NaNs
+        tickers = self._get_sp500_constituents()
+        prices = yf.download(tickers, start="2000-01-01", end="2025-04-01")["Close"]
+        valid_prices = prices.dropna(axis=1, thresh=0.9*len(prices))
+        # Calculate the asset return
+        log_returns = np.log(valid_prices / valid_prices.shift(change_days)).dropna()
+        # Save data
+        log_returns.to_csv(f"asset_return_sp500_changedays{change_days}")
+
+
+    def _load_sp500_asset_return(self, change_days=10):
+        """Load individual companies' asset return
+
+        Args:
+            change_days (int, optional): _description_. Defaults to 10.
+
+        Returns:
+            np.ndarray: Log returns over change_days time
+        """
+        try:
+            log_returns = pd.read_csv(f"asset_return_sp500_changedays{change_days}", index_col=0, parse_dates=True)
+        except FileNotFoundError:
+            print("No Yfinance data for S&P 500 found. Saving data now")
+            self._save_sp500_asset_return(change_days=change_days)
+            log_returns = pd.read_csv(f"asset_return_sp500_changedays{change_days}", index_col=0, parse_dates=True)
+        return np.ravel(log_returns)
+    
+    
+    def duration_spread_over_mean(self, peak_kwargs):
+        """Compare the spread/mean for the recession duration of our model and the data
+        """
+        # Get model and data
+        time, duration = self._load_recession_results() # _recession_time_between_and_duration(plot=False, **peak_kwargs)
+        time_NBER, duration_NBER = self._load_recession_data()
+        
+        # Calculate spread / mean
+        spread_over_mean = np.std(duration) / np.mean(duration)
+        spread_over_mean_NBER = np.std(duration_NBER) / np.mean(duration_NBER)
+        
+        som_time = np.std(time) / np.mean(time)
+        som_time_NBER = np.std(time_NBER) / np.mean(time_NBER)
+        
+        return spread_over_mean, som_time, spread_over_mean_NBER, som_time_NBER
+    
+    
+    def _save_inflation_data(self, source="CPI", start="1959-01-01", end="2025-04-01"):
+        tickers = {
+            "CPI": "CPIAUCSL",     # Consumer Price Index
+            "PCE": "PCEPI"         # Personal Consumption Expenditures Price Index
+        }
+
+        if source.upper() not in tickers:
+            raise ValueError("Source must be either 'CPI' or 'PCE'.")
+        # Download data
+        series = web.DataReader(tickers[source.upper()], "fred", start, end)
+        name = source + f"_inflation_data.pkl"
+        filename = dir_path_output / name
+        series.to_pickle(filename)
+        return series
+    
+
+    def _load_inflation_data(self, source="CPI", start="1959-01-01", end="2025-03-01", freq="ME", change_type="log"):
+        """
+        Download CPI or PCE data from FRED via yfinance and calculate inflation.
+
+        Args:
+            source (str): "CPI" or "PCE".
+            start (str): Start date in "YYYY-MM-DD" format.
+            end (str): End date in "YYYY-MM-DD" format.
+            freq (str): Frequency for resampling: "M" (monthly), "Q" (quarterly), etc.
+            change_type (str): "log" for log returns, "percent" for percentage change.
+
+        Returns:
+            pd.DataFrame: DataFrame with the price index and computed inflation.
+        """
+        tickers = {
+            "CPI": "CPIAUCSL",     # Consumer Price Index
+            "PCE": "PCEPI"         # Personal Consumption Expenditures Price Index
+        }
+
+        if source.upper() not in tickers:
+            raise ValueError("Source must be either 'CPI' or 'PCE'.")
+        if change_type.lower() not in {"log", "percent"}:
+            raise ValueError("change_type must be 'log' or 'percent'.")
+
+        # Load data
+        name = source + f"_inflation_data.pkl"
+        filename = dir_path_output / name
+        try:
+            series = pd.read_pickle(filename)
+        except FileNotFoundError:
+            print(f"File {name} not found. Downloading data now")
+            series = self._save_inflation_data(source, start, end)
+            
+        series.name = source.upper()
+        series = series.resample(freq).mean()  # Take NaNs into account
+
+        # Compute inflation
+        if change_type.lower() == "log":
+            inflation = np.log(series / series.shift(1))
+            inflation.name = "log_inflation"
+        else:
+            inflation = (series / series.shift(1) - 1) * 100
+            inflation.name = "percent_inflation"
+
+        return series, inflation.dropna()
+
+    
+    def _get_inflation(self, change_type="log", window_size=1):
+        """Find the price change (log or procent determined by change_type) of either mu or s depending on price_change_variable.
+
+        Args:
+            change_type (str, optional): _description_. Defaults to "log".
+            window_size (int, optional): _description_. Defaults to 1.
+            price_change_variable (str, optional): _description_. Defaults to "mu".
+
+        Returns:
+            _type_: _description_
+        """
+        # Load data
+        self._get_data(self.group_name)
+        mu, w_paid = self._skip_values(self.mu, self.w_paid)
+        average_wage_paid = mu / w_paid
+        variable = uniform_filter1d(average_wage_paid, size=window_size)
+            
+        # Compute inflation
+        if change_type.lower() == "log":
+            inflation = np.log(variable[1:] / variable[:-1])
+        elif change_type.lower() == "percent":
+            inflation = (variable[1:] / variable[:-1] - 1) * 100    
+        else:
+            print(f"{change_type} is not a valid change_type")
+        
+        return variable, inflation
