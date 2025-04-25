@@ -127,7 +127,7 @@ class MethodsWorkForce(WorkForce):
             # Find which companies that sells and how many times they do it
             idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
             # Find how much each of the chosen companies sell for
-            sell_unique = self.w[idx_unique] * self.mu / (self.W - self.W_not_payed)  
+            sell_unique = self.w[idx_unique] * self.mu / self.W   
             # Multiply that by how many times they sold
             sell_unique_all = sell_unique * counts
             # Update values
@@ -151,13 +151,11 @@ class MethodsWorkForce(WorkForce):
                     salary_unique_all = salary_unique_all[idx_not_bankrupt]
                     self.d[idx_not_bankrupt] += salary_unique_all
                     
-                    # Calculate the number of workers who did not receive payment
-                    self.W_not_payed = np.sum(self.w[idx_goes_bankrupt])
-                    
                 else:            
                     self.d[idx_unique] += salary_unique_all
                 
                 self.system_money_spent = salary_unique_all.sum()
+                self.w_paid = np.sum(self.w[idx_unique] * counts)
         
             # Salary i.e. pay workers every time step
             elif self.transaction_method == "salary":
@@ -175,9 +173,6 @@ class MethodsWorkForce(WorkForce):
                     self.d += salary_payments
                     self.d[idx_goes_bankrupt] = 1e-10
                     
-                    # Calculate the number of workers who did not receive payment
-                    self.W_not_payed = np.sum(self.w[idx_goes_bankrupt])
-
                 else:
                     # All companies pay salaries
                     self.d += salary_payments
