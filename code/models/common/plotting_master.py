@@ -1,17 +1,25 @@
-import general_functions 
+# Plotting
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.gridspec import GridSpec
 from matplotlib.colors import PowerNorm
+from matplotlib.patches import Patch
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
-import functools
+from matplotlib.ticker import MaxNLocator, FormatStrFormatter, NullFormatter, LogFormatterMathtext, LogLocator
+# Numerical
 import numpy as np
+import pandas as pd
 import scipy.optimize
+from scipy.stats import norm
 from scipy.ndimage import uniform_filter1d
-from run import dir_path_image
 import scipy.stats
+# My scripts
+import general_functions 
+from run import dir_path_image
 from postprocess import PostProcess
-import powerlaw
+# Other
+import functools
+
 
 
 class PlotMaster(general_functions.PlotMethods, PostProcess):
@@ -2940,7 +2948,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         
     def plot_worker_distribution(self, Nbins=None, xlim=None, ylim=(1e-5, 2e0), x_ticks=None, bars_or_points="bars", p0=(1.059, 1), w_lim_fit=(None, None)):
-        """Histogram of the counts of companies with workers.
+        """Company Size. Histogram of the counts of companies with workers.
         """
         assert bars_or_points in ["bars", "points"]
         
@@ -2952,12 +2960,6 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
 
         def power_law(x, a, b):
             return b * x ** (-a)
-        
-        # Only fit to central data
-        fit = powerlaw.Fit(w, xmin=w_lim_fit[0], xmax=w_lim_fit[1], discrete=True)
-        fit_alpha = fit.alpha
-        fit_xmin = fit.xmin
-        fit_xmax = fit.xmax
         
         # Bin it
         if Nbins is None:
@@ -2976,14 +2978,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         elif bars_or_points == "points":
             ax.plot(x_plot, counts, ".", color=self.colours["workers"], label="Data")
         
-        # Plot the empirical results (a line with slope -2), and the fit
+        # Plot the empirical results (a line with slope -2)
         x_line = np.linspace(x_plot[0], x_plot[-1], 250)
         y_emp = power_law(x_line, a=2.059, b=1)
         ax.plot(x_line, y_emp, "k-", label="Empirical, slope=2")
+        
         # Setup
         ax.grid()
         ax.set(xlabel="Number of workers", ylabel="Prob. Density", yscale="log", xlim=xlim, ylim=ylim)
-        ax.text(x=0.1, y=0.9, s=fr"$\alpha=${self.prob_expo}", horizontalalignment="left", transform=ax.transAxes, fontsize=15)
         # y ticks        
         y_exponent_range = np.log10(ylim)
         self._axis_log_ticks_and_labels(ax, y_exponent_range, labels_skipped=1, which="y")
@@ -3219,10 +3221,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         time_between, duration = self._recession_time_between_and_duration(window_size, peak_distance, peak_width, peak_height, trough_height, peak_prominence, trough_prominence, plot_peaks)
         
         # Get NBER data
-        df_NBER = self._load_recession_data()
-        time_between_NBER = df_NBER["time_between"].dropna()
-        duration_NBER = df_NBER["duration"]
-        print("NBER peaks: ", len(duration_NBER))
+        time_between_NBER, duration_NBER = self._load_recession_data()
         
         # Bin data
         if Nbins is None: 
@@ -3239,12 +3238,11 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         counts_duration_NBER, edges_duration_NBER = np.histogram(duration_NBER, bins=Nbins_NBER, density=True)
         ylim_NBER = (0, 1.05*np.max((counts_time_NBER.max(), counts_duration_NBER.max())))
         
-        
         # create figure
         fig, ax_arr = plt.subplots(ncols=2, nrows=2, figsize=(10, 5))
         ax_time = ax_arr[0, 0]
-        ax_duration = ax_arr[0, 1]
-        ax_time_NBER = ax_arr[1, 0]
+        ax_duration = ax_arr[1, 0]
+        ax_time_NBER = ax_arr[0, 1]
         ax_duration_NBER = ax_arr[1, 1]
         
         # Plot
@@ -3254,8 +3252,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax_duration_NBER.hist(edges_duration_NBER[:-1], edges_duration_NBER, weights=counts_duration_NBER, color=self.colours["time"])
         
         # Axis setup
-        ax_time.set(xlabel="Time between recessions [a.u]", ylabel="Prob. Density", ylim=ylim)
-        ax_duration.set(xlabel="Recession duration [a.u]", ylim=ylim)
+        ax_time.set(xlabel="Time between recessions [a.u.]", ylabel="Prob. Density", ylim=ylim)
+        ax_duration.set(xlabel="Recession duration [a.u.]", ylim=ylim)
         ax_time_NBER.set(xlabel="Time between recessions [days]", ylabel="Prob. Density", ylim=ylim_NBER)
         ax_duration_NBER.set(xlabel="Recession duration [days]", ylim=ylim_NBER)
         ax_time.grid()
@@ -3284,3 +3282,438 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Text save show
         self._text_save_show(fig, ax, "lifespan", xtext=0.05, ytext=0.85, fontsize=2)        
+
+
+    def _apply_manual_ticks(self, ax):
+        """
+        3 majors + 2 minors on X (linear, no sci notation)
+        2 majors + 1 minor on Y; if log scale, LaTeX style and label note.
+        Also turns on grid for majors & minors.
+        """
+        # --- X axis ---
+        xmin, xmax = ax.get_xlim()
+        xmaj = np.linspace(xmin, xmax, 3)
+        xminor = np.linspace(xmin, xmax, 5)[1:-1]
+
+        ax.set_xticks(xmaj)
+        ax.set_xticks(xminor, minor=True)
+        ax.xaxis.set_minor_formatter(NullFormatter())
+
+        ax.tick_params(axis="x", which="major", length=6, width=1.5)
+        ax.tick_params(axis="x", which="minor", length=3, width=1)
+
+        # --- Y axis ---
+        ymin, ymax = ax.get_ylim()
+        ymaj = [ymin, ymax]
+        # midpoint: geometric if log, arithmetic if linear
+        if ax.get_yscale() == "log":
+            ymid = np.sqrt(ymin * ymax)
+        else:
+            ymid = 0.5*(ymin + ymax)
+        yminor = [ymid]
+
+        ax.set_yticks(ymaj)
+        ax.set_yticks(yminor, minor=True)
+
+        if ax.get_yscale() == "log":
+            # LaTeX style: 10^k
+            fmt = LogFormatterMathtext(base=10, labelOnlyBase=False)
+            ax.yaxis.set_major_formatter(fmt)
+
+        ax.yaxis.set_minor_formatter(NullFormatter())
+        ax.tick_params(axis="y", which="major", length=6, width=1.5)
+        ax.tick_params(axis="y", which="minor", length=3, width=1)
+
+        # --- Grids ---
+        ax.grid(which="major", linestyle="-", linewidth=0.7, alpha=0.7)
+        ax.grid(which="minor", linestyle="-", linewidth=0.5, alpha=0.7)
+
+
+
+    def plot_economic_results(self, recession_parameters, 
+                              Nbins_asset_return=None, ylim_asset_return=None, ylim_asset_return_data=None, Nbins_asset_return_data=None,
+                              ylim_lifespan=None, bin_width_lifespan=1, Nbins_recession=None, Nbins_NBER_time=15, Nbins_NBER_duration=12, 
+                              Nbins_size=None, xlim_size=None, ylim_size=None, SP500_change_days=10,
+                              inflation_change_type="log", window_size_inflation=10, window_size_second_inflation=10, inflation_time_values=1000):
+        """In the first coloumn, plot model results and in the second plot data.
+        Plot:
+            0. Asset return
+            1. Company lifespan. 
+            2. Reccesion duration
+            3. Time between recessions
+            4. Company size      
+            5. Inflation  
+        """
+        # -- Get data --
+        self._get_data(self.group_name)
+        # Asset return
+        asset_return = self._asset_return("capital_individual_all", time_period=1)
+        asset_return_SP500 = self._load_sp500_asset_return(SP500_change_days) 
+        # Company lifespan
+        lifespan = self._get_lifespan()
+        lifespan_data_x, lifespan_data_logy = self._load_lifespan_data()
+        # Recession duration and time between
+        try: 
+            time_between_recessions, recession_duration = self._load_recession_results()
+        except FileNotFoundError:
+            print("No recession results found, generating results now")
+            self._save_recession_results(**recession_parameters)
+            time_between_recessions, recession_duration = self._load_recession_results()
+        # Get NBER recession data data
+        (time_between_NBER, duration_NBER), (time_between_NBER_PW, duration_NBER_PW) = self._load_recession_data(separate_post_war=True)
+        # Company size        
+        w, time_for_inflation = self._skip_values(self.w, self.time_values[:self.skip_values+inflation_time_values])
+        w = w[w > 0]
+        # Company size data
+        labels_size_data, counts_size_data = self._prepare_firm_size_pmf(normalize=True)
+        # Inflation data
+        _, mu_smooth_inflation = self._get_inflation(change_type=inflation_change_type, window_size=window_size_inflation)
+        mu_smooth_inflation = uniform_filter1d(mu_smooth_inflation, size=window_size_second_inflation)
+        _, PCE_inflation = self._load_inflation_data(source="PCE", change_type=inflation_change_type)
+        # Create figure and unpack axes
+        fig, ax_arr = plt.subplots(figsize=(10, 10), ncols=2, nrows=6, gridspec_kw={'hspace': 0.15})
+        ax_asset = ax_arr[0, :]
+        ax_lifespan = ax_arr[1, :]
+        ax_time_between = ax_arr[2, :]
+        ax_duration = ax_arr[3, :]
+        ax_size = ax_arr[4, :]
+        ax_inflation = ax_arr[5, :]
+        
+        # Asset return
+        # Gaussian to compare with
+        x_gauss = np.linspace(-5, 5, 300)
+        gauss = norm.pdf(x_gauss, loc=0, scale=np.std(np.ravel(asset_return[~np.isnan(asset_return)])))
+        if Nbins_asset_return is None: Nbins_asset_return = int(0.9 * np.sqrt(len(asset_return)))
+        ylim_asset_return = (1e-4, 5e0)
+        ylim_asset_return_data = (1e-2, 1e2)
+        asset_return_x_ticks = [-3, -1.5, 0, 1.5, 3] # np.floor(np.linspace(edges_indi[0], edges_indi[-1], 5))
+        asset_return_x_ticklabels = asset_return_x_ticks[::2]  # {-3: "-3%", 0: "0%", 3: "3%"}
+        ax_asset[0].hist(asset_return, bins=Nbins_asset_return, color=self.colours["capital"], density=True, label="Model results")
+        ax_asset[0].plot(x_gauss, gauss, c="black", label="Gaussian", alpha=0.8)
+        ax_asset[0].set(xlabel="Log return", ylabel="PDF", ylim=ylim_asset_return, yscale="log", xlim=(-3.5, 3.5))
+        ax_asset[0].grid()
+        ax_asset[0].legend(frameon=False, loc="upper right")
+        self._axis_ticks_and_labels(ax_asset[0], x_ticks=asset_return_x_ticks, x_labels=asset_return_x_ticklabels)
+            
+        # Asset return data
+        gauss_data = norm.pdf(x_gauss, loc=0, scale=np.std(asset_return_SP500))
+        ylim_asset_return_data = (3e-5, 2e1)
+        if Nbins_asset_return_data is None: Nbins_asset_return_data = int(np.sqrt(len(asset_return_SP500)))
+        ax_asset[1].hist(asset_return_SP500, bins=Nbins_asset_return_data, color=self.colours["capital"], density=True, label="S&P 500 Data")
+        ax_asset[1].plot(x_gauss, gauss_data, c="black", label="Gaussian", alpha=0.8)
+        ax_asset[1].set(xlabel="Log return", ylim=ylim_asset_return_data, yscale="log", ylabel="PDF", xlim=(-2.05, 2.05))
+        ax_asset[1].grid()
+        ax_asset[1].legend(frameon=False, loc="upper right")
+        asset_return_data_x_ticks = [-2., -1.25, 0, 1.25, 2.] 
+        asset_return_data_x_ticklabels = asset_return_data_x_ticks[::2] #{-2.5: "-2.5%", 0: "0%", 2.5: "2.5%"}
+        self._axis_ticks_and_labels(ax_asset[1], x_ticks=asset_return_data_x_ticks, x_labels=asset_return_data_x_ticklabels)
+        ax_asset[1].yaxis.set_major_locator(LogLocator(numticks=3))
+
+        # Lifespan
+        # Define xticks for the three time results (lifespan, time between recession, recession duration)
+        # Disregard the top 2% highest lifespan values in the max to prevent extreme outliers
+        lifespan_sorted = np.sort(lifespan)
+        lifespan_for_max = lifespan_sorted[: int(lifespan_sorted.size * 0.999)]
+        time_max = np.max((lifespan_for_max[-1], time_between_recessions.max(), recession_duration.max()))
+        time_min = 0
+        xlim_time = (time_min, time_max)
+        xtime_round = 50
+        xlim_time = np.round(np.array(xlim_time) / xtime_round) * xtime_round
+        
+        if ylim_lifespan is None: ylim_lifespan = (4e-7, 8e-2)
+        bins_life_span = np.arange(1, time_max, bin_width_lifespan)
+        ax_lifespan[0].hist(lifespan, bins=bins_life_span, color=self.colours["time"], density=True)
+        ax_lifespan[0].set(xlabel="Company Lifespan [a.u.]", ylabel="PDF", yscale="log", ylim=ylim_lifespan, xlim=xlim_time)
+        ax_lifespan[0].grid()
+        x_ticks_time = np.linspace(xlim_time[0], xlim_time[1], 5)
+        x_ticklabels_time = x_ticks_time[::2]
+        self._axis_ticks_and_labels(ax_lifespan[0], x_ticks=x_ticks_time, x_labels=x_ticklabels_time, x_dtype="int")
+        ax_lifespan[0].yaxis.set_major_locator(LogLocator(numticks=3))
+
+        # Lifespan data
+        ylim_lifespan_data = (5e-1, 5e3)
+        lifespan_data_y = 10 ** lifespan_data_logy
+        ax_lifespan[1].plot(lifespan_data_x, lifespan_data_y, ".", color=self.colours["time"])
+        ax_lifespan[1].set(xlabel="Company Lifespan [years]", yscale="log", ylim=ylim_lifespan_data, ylabel="Counts")
+        ax_lifespan[1].grid()
+        data_x_ticks_lifespan = [0, 15, 30, 45, 60] 
+        data_x_ticklabels_lifespan = data_x_ticks_lifespan[::2] 
+        self._axis_ticks_and_labels(ax_lifespan[1], x_ticks=data_x_ticks_lifespan, x_labels=data_x_ticklabels_lifespan, x_dtype="int")
+        ax_lifespan[1].yaxis.set_major_locator(LogLocator(numticks=3))
+        
+        # Recessions: Time between and duration
+        day_to_year_factor = 1 / 365
+        duration_NBER *= day_to_year_factor
+        time_between_NBER *= day_to_year_factor
+        duration_NBER_PW *= day_to_year_factor
+        time_between_NBER_PW *= day_to_year_factor
+        # Bin data
+        if Nbins_recession is None: 
+            Nbins = int(np.sqrt(len(recession_duration)))
+        bins_time_NBER = np.linspace(time_between_NBER.min(), time_between_NBER.max(), Nbins_NBER_time)
+        bins_duration_NBER = np.linspace(duration_NBER.min(), duration_NBER.max(), Nbins_NBER_duration)
+                
+        # Model
+        counts_time, edges_time = np.histogram(time_between_recessions, bins=Nbins, density=True)
+        counts_duration, edges_duration = np.histogram(recession_duration, bins=Nbins, density=True)
+        # NBER
+        counts_time_NBER, edges_time_NBER = np.histogram(time_between_NBER, bins=bins_time_NBER, density=False)  # All NBER data
+        counts_duration_NBER, edges_duration_NBER = np.histogram(duration_NBER, bins=bins_duration_NBER, density=False)  # All NBER data
+        counts_time_PW_NBER, edges_time_PW_NBER = np.histogram(time_between_NBER_PW, bins=bins_time_NBER)
+        counts_duration_PW_NBER, edges_duration_PW_NBER = np.histogram(duration_NBER_PW, bins=bins_duration_NBER)
+        
+        ax_time_between[0].hist(edges_time[:-1], edges_time, weights=counts_time, color=self.colours["time"])
+        ax_duration[0].hist(edges_duration[:-1], edges_duration, weights=counts_duration, color=self.colours["time"])
+        ax_time_between[1].hist(edges_time_NBER[:-1], edges_time_NBER, weights=counts_time_NBER, color=self.colours["time"], label="Since 1854")  # All NBER data
+        ax_duration[1].hist(edges_duration_NBER[:-1], edges_duration_NBER, weights=counts_duration_NBER, color=self.colours["time"])  # All NBER data
+        
+        # Post war NBER (recession)
+        post_war_colour = "purple"
+        post_war_alpha = 0.5
+        ax_time_between[1].hist(edges_time_PW_NBER[:-1], edges_time_PW_NBER, weights=counts_time_PW_NBER, color=post_war_colour, alpha=post_war_alpha, label="Since 1946")
+        ax_duration[1].hist(edges_duration_PW_NBER[:-1], edges_duration_PW_NBER, weights=counts_duration_PW_NBER, color=post_war_colour, alpha=post_war_alpha, label="Since 1946")
+        
+        # Legend for the NBER data and post war data
+        colour_PW_blend = self._blend_colours(post_war_colour, self.colours["time"], post_war_alpha)
+        legend_handles = [
+            Patch(facecolor=self.colours["time"], label="Since 1854"),
+            Patch(facecolor=colour_PW_blend, label="Since 1946")
+        ]
+        ax_time_between[1].legend(handles=legend_handles, loc="upper right", frameon=False, )
+        ax_duration[1].legend(handles=legend_handles, loc="upper right", frameon=False, )
+        
+        # Axis setup
+        xlim_NBER = (0, 13)
+        ylim_time_between = (0, 1.05*np.max((counts_time.max(), counts_time_NBER.max())))
+        ylim_duration = (0, 1.05*np.max((counts_duration.max(), counts_duration_NBER.max())))
+        ax_time_between[0].set(xlabel="Time between recessions [a.u.]", ylabel="PDF", xlim=xlim_time)# ylim=ylim_time_between)
+        ax_duration[0].set(xlabel="Recession duration [a.u.]", xlim=xlim_time, ylabel="PDF")#ylim=ylim_duration)
+        ax_time_between[1].set(xlabel="Time between recessions [years]", ylabel="Counts", xlim=xlim_NBER)# ylim=ylim_time_between)
+        ax_duration[1].set(xlabel="Recession duration [years]", ylabel="Counts", xlim=xlim_NBER)#ylim=ylim_duration)
+        ax_time_between[0].grid()
+        ax_duration[0].grid()
+        ax_time_between[1].grid()
+        ax_duration[1].grid()
+        
+        # Ticks
+        yticks_time_between = np.array([0, 0.75, 1.5]) * 1e-3
+        yticklabels_time_between = {0: r"$0$", 0.75e-3: r"$0.75 \times 10^{-3}$", 1.5e-3: r"$1.5 \times 10^{-3}$"}
+        yticks_duration = np.array([0, 2, 4]) * 1e-3
+        yticklabels_duration = {0: r"$0$", 2e-3: r"$2 \times 10^{-3}$", 4e-3: r"$4\times 10^{-3}$"}
+        
+        self._axis_ticks_and_labels(ax_time_between[0], x_ticks=x_ticks_time, x_labels=x_ticklabels_time, x_dtype="int",)
+                                    # y_ticks=yticks_time_between, y_labels=yticklabels_time_between)    
+        self._axis_ticks_and_labels(ax_duration[0], x_ticks=x_ticks_time, x_labels=x_ticklabels_time, x_dtype="int",)
+                                    # y_ticks=yticks_duration, y_labels=yticklabels_duration)    
+        xticks_NBER = [0, 3.5, 7, 10.5, 14]
+        xticklabels_NBER = xticks_NBER[::2]
+        yticks_NBER = [0, 7.5, 15]
+        yticklabels_NBER = [0, 15]
+        self._axis_ticks_and_labels(ax_time_between[1], x_ticks=xticks_NBER, x_labels=xticklabels_NBER, x_dtype="int",
+                                    y_ticks=yticks_NBER, y_labels=yticklabels_NBER)
+        self._axis_ticks_and_labels(ax_duration[1], x_ticks=xticks_NBER, x_labels=xticklabels_NBER, x_dtype="int",
+                                    y_ticks=yticks_NBER, y_labels=yticklabels_NBER)
+
+        # Force scientific notation on the y-axis, always showing ×10^k
+        ax_time_between[0].ticklabel_format(axis='y',
+                            style='scientific',
+                            scilimits=(0,0),      # always use science notation
+                            useMathText=True)     # render with LaTeX math
+        ax_duration[0].ticklabel_format(axis='y',
+                            style='scientific',
+                            scilimits=(0,0),      # always use science notation
+                            useMathText=True)     # render with LaTeX math
+
+
+        # Company size (plot data on top)
+        size_min = 0.9  # Slightly below 1 which is the true min
+        size_max = 1.1*np.max((np.max(w), np.max(labels_size_data)))
+        xlim_size = (size_min, size_max)
+        if ylim_size is None: ylim_size = (1e-6, 2e1)
+        if Nbins_size is None: Nbins_size = int(np.sqrt(np.size(w)))
+        bins_size = 10 ** np.linspace(np.log10(1e-1), np.log10(np.max(w) * 10), Nbins_size)  # Log x cuts off large values if max range value is not increased
+        counts_size, edges_size = np.histogram(w, bins=bins_size, density=True)
+        
+        ax_size[0].set(xlabel="Company size", ylabel="PDF", yscale="log", xlim=xlim_size, ylim=ylim_size, xscale="log")
+        ax_size[0].stairs(counts_size, edges_size, color=self.colours["workers"], alpha=1, label="Model")
+        ax_size[0].plot(labels_size_data, counts_size_data, "o", color=self.colours["workers"], mec="black", label="Data")  # mec = marker edgecolor
+        ax_size[0].grid()
+        ax_size[0].legend(loc="upper right", frameon=False)
+        # Ticks
+        ax_size[0].yaxis.set_major_locator(LogLocator(numticks=3))
+        
+        # Company size data
+        ax_size[1].plot(labels_size_data, counts_size_data, "o", color=self.colours["workers"], mec="black")  # mec = marker edgecolor
+        ax_size[1].set(yscale="log", xlabel="Company size", xscale="log", ylabel="PDF",  xlim=xlim_size, ylim=ylim_size)
+        ax_size[1].grid()
+        ax_size[1].yaxis.set_major_locator(LogLocator(numticks=3))
+        
+        # Inflation
+        points_to_include = len(time_for_inflation)
+        mu_smooth_inflation = mu_smooth_inflation[:points_to_include]  # Do not show hundred of thousands of points
+        ax_inflation[0].plot(time_for_inflation, mu_smooth_inflation, "-", color=self.colours["mu"], lw=1)
+        ax_inflation[1].plot(PCE_inflation, "-", color=self.colours["mu"])
+        
+        # Axis setup
+        if inflation_change_type == "log":
+            ylabel_change = "Log Change"
+        else:
+            ylabel_change = "Percent Change"
+        
+        inflation_min = 1.02 * np.min((mu_smooth_inflation.min(), PCE_inflation.min().item()))
+        inflation_max = 1.02 * np.max((mu_smooth_inflation.max(), PCE_inflation.max().item()))
+        ylim_inflation = (inflation_min, inflation_max)
+        ax_inflation[0].set(ylabel=ylabel_change, ylim=ylim_inflation)
+        ax_inflation[1].set(ylabel=ylabel_change, xlabel="Date",)# ylim=ylim_inflation)
+        # Grid
+        ax_inflation[0].grid()
+        ax_inflation[1].grid()
+        # Set ticks for model
+        xticks_inflation = np.linspace(time_for_inflation[0], time_for_inflation[-1], 5)
+        xticklabels_inflation = xticks_inflation[::2]
+        yticks_inflation = [-0.01, 0, 0.01]
+        yticklabels_inflation = yticks_inflation
+        self._axis_ticks_and_labels(ax_inflation[0], x_ticks=xticks_inflation, x_labels=xticklabels_inflation, x_dtype="int",
+                                    y_ticks=yticks_inflation, y_labels=yticklabels_inflation)
+        # Extract start and end year
+        start_year = PCE_inflation.index.min().year
+        end_year = PCE_inflation.index.max().year
+        middle_year = int((start_year + end_year) / 2)
+
+        # Create datetime tick positions
+        tick_positions = pd.to_datetime([f"{start_year}-01-01", f"{middle_year}-01-01", f"{end_year}-01-01"])
+        tick_labels = [str(start_year), str(middle_year), str(end_year)]
+        # Set ticks for data
+        ax_inflation[1].set_xticks(tick_positions)
+        ax_inflation[1].set_xticklabels(tick_labels)        
+        self._axis_ticks_and_labels(ax_inflation[1], y_ticks=yticks_inflation, y_labels=yticklabels_inflation)
+        
+        # Text, save, show
+        self._text_save_show(fig, ax_arr[0, 0], f"economic_results_alpha{self.prob_expo}", xtext=0.05, ytext=0.85, fontsize=1)
+        
+
+    def plot_peak_hyperparameter_comparison(self, hyperpar_picky: dict, hyperpar_relaxed: dict, bins_picky: int, bins_relaxed: int, time_values_to_include=7000) -> None:
+        """Four plots. First column show the peaks and the second column shows the corresponding distribution of recession durations. 
+        First row is the picky hyperparameter and the second the relaxed selection.
+        """
+        # Get mu and time, then limit to the chosen time_interval
+        self._get_data(self.group_name)
+        mu, time = self._skip_values(self.mu, self.time_values)
+        mu_smooth = uniform_filter1d(mu, size=hyperpar_picky["window_size"]) / self.W
+        mu_smooth = mu_smooth[: time_values_to_include]
+        time = time[: time_values_to_include]
+        
+        # Get the peaks and durations
+        _, duration_picky, troughs_picky, peaks_picky = self._recession_time_between_and_duration(return_peaks=True, **hyperpar_picky)
+        _, duration_relaxed, troughs_relaxed, peaks_relaxed = self._recession_time_between_and_duration(return_peaks=True, **hyperpar_relaxed)
+        
+        # Pick only the peaks and troughs inside the allowed time interval
+        def _prep_extrema(extrema_data):
+            """Make sure has the correct number of points (i.e. up to time_values_to_include), then shift by skip_values to get to the same space as mu
+
+            Args:
+                extrema_data (_type_): _description_
+
+            Returns:
+                _type_: _description_
+            """
+            idx = extrema_data[extrema_data < time_values_to_include]
+            t = idx + self.skip_values
+            return t, idx
+        
+        troughs_picky, troughs_picky_idx = _prep_extrema(troughs_picky)
+        peaks_picky, peaks_picky_idx = _prep_extrema(peaks_picky)
+        troughs_relaxed, troughs_relaxed_idx = _prep_extrema(troughs_relaxed)
+        peaks_relaxed, peaks_relaxed_idx = _prep_extrema(peaks_relaxed)
+                
+        # Bin the duration data
+        fig, ax_arr = plt.subplots(figsize=(10, 5), ncols=2, nrows=2)
+        ax_peak_picky = ax_arr[0, 0]
+        ax_peak_relaxed = ax_arr[1, 0]
+        ax_dur_picky = ax_arr[0, 1]
+        ax_dur_relaxed = ax_arr[1, 1]
+        
+        # The plots
+        ax_peak_picky.plot(time, mu_smooth, c="black")
+        ax_peak_picky.plot(troughs_picky, mu_smooth[troughs_picky_idx], "<", c="red")
+        ax_peak_picky.plot(peaks_picky, mu_smooth[peaks_picky_idx], "^", c="green")
+        
+        ax_peak_relaxed.plot(time, mu_smooth, c="black")
+        ax_peak_relaxed.plot(troughs_relaxed, mu_smooth[troughs_relaxed_idx], "<", c="red")
+        ax_peak_relaxed.plot(peaks_relaxed, mu_smooth[peaks_relaxed_idx], "^", c="green")
+        
+        ax_dur_picky.hist(duration_picky, bins=bins_picky, color=self.colours["time"])
+        ax_dur_relaxed.hist(duration_relaxed, bins=bins_relaxed, color=self.colours["time"])
+        
+        # # Legend
+        # ax_peak_picky.legend(frameon=False, loc="upper right")
+        # ax_peak_relaxed.legend(frameon=False, loc="upper right")
+        
+        # Axis setup
+        ax_peak_picky.set(ylabel=r"Smoothed $\mu$ [a.u.]")
+        ax_peak_relaxed.set(ylabel=r"Smoothed $\mu$ [a.u.]", xlabel="Time [a.u.]")
+        ax_dur_picky.set(ylabel="Counts")
+        ax_dur_relaxed.set(ylabel="Counts", xlabel="Recession duration [a.u.]")
+        ax_peak_picky.grid()
+        ax_peak_relaxed.grid()
+        ax_dur_picky.grid()
+        ax_dur_relaxed.grid()
+        
+        # Text, save, show
+        self._text_save_show(fig, ax_arr[0, 0], f"peak_hyperpar_comparison", xtext=0.05, ytext=0.85, fontsize=1)
+
+
+    def plot_inflation_comparison(self, change_type="log", window_size=10, window_size_inflation=5):
+        # Get data
+        mu_smooth, mu_smooth_inflation = self._get_inflation(change_type=change_type, window_size=window_size)
+        mu_smooth_inflation = uniform_filter1d(mu_smooth_inflation, size=window_size_inflation)
+        time, mu, w_paid = self._skip_values(self.time_values, self.mu, self.w_paid) 
+        average_wage_paid = mu / w_paid
+        time_for_diff = time[:-1]
+        
+        PCE, PCE_inflation = self._load_inflation_data(source="PCE", change_type=change_type)
+
+        # Create figure and unpack axis
+        fig, ax_arr = plt.subplots(figsize=(10, 5), ncols=2, nrows=2)
+        ax_mu = ax_arr[0, 0]
+        ax_PCE = ax_arr[0, 1]
+        ax_mu_change = ax_arr[1, 0]
+        ax_PCE_change = ax_arr[1, 1]
+                
+        # Plots
+        ax_mu.plot(time, average_wage_paid, c="black", label=r"$\mu/w_\text{paid}$")
+        ax_mu.plot(time, mu_smooth, c=self.colours["mu"], alpha=0.95, label=r"$\mu/w_\text{paid}$ smoothed")
+        ax_PCE.plot(PCE, c=self.colours["mu"])
+        
+        ax_mu_change.plot(time_for_diff, mu_smooth_inflation, "-", color=self.colours["mu"], lw=1)
+        ax_PCE_change.plot(PCE_inflation, "-", color=self.colours["mu"])
+        
+        # Axis setup
+        if change_type == "log":
+            ylabel_change = "Log Price Change"
+        else:
+            ylabel_change = "Percent Price Change"
+        
+        inflation_min = 1.02 * np.min((mu_smooth_inflation.min(), PCE_inflation.min().item()))
+        inflation_max = 1.02 * np.max((mu_smooth_inflation.max(), PCE_inflation.max().item()))
+        ylim_inflation = (inflation_min, inflation_max)
+        ax_mu.set(ylabel="Price [a.u.]")
+        ax_PCE.set(ylabel="Relative price")
+        ax_mu_change.set(ylabel=ylabel_change, ylim=ylim_inflation)
+        ax_PCE_change.set(ylabel=ylabel_change, xlabel="Date", ylim=ylim_inflation)
+        # Grid
+        for axis in ax_arr.flatten():
+            axis.grid()
+        # Legend
+        ax_mu.legend(frameon=False, loc="upper left", ncols=2)       
+        # Ticks
+        self._quick_axis_ticks(ax_mu, which="both", Nbins=3, integer=True)
+        self._quick_axis_ticks(ax_mu_change, which="both", Nbins=3)
+        self._quick_axis_ticks(ax_PCE, which="y", Nbins=3, integer=True) 
+        self._quick_axis_ticks(ax_PCE_change, which="y", Nbins=3, integer=False)
+            
+        # Text, save, show
+        self._text_save_show(fig, ax_mu_change, f"inflation_comparison_{change_type}", xtext=0.05, ytext=0.85, fontsize=1)
+        plt.close()
+
+        
