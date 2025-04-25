@@ -167,3 +167,9 @@ cython_debug/
 
 # Ignore mp4 files
 *.mp4
+
+
+*.npz
+*.xlsx
+*.csv
+*.pkl
