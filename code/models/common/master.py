@@ -48,7 +48,8 @@ class WorkForce():
         self.mu = self.mutation_magnitude * self.W / 2
         self.system_money_spent = self.mu 
         self.T = self._time_scale()
-        self.W_not_payed = 0
+        self.W_not_paid = 0
+        self.w_paid = 0
     
     
     def _initialize_history_arrays(self):
@@ -62,7 +63,8 @@ class WorkForce():
         self.went_bankrupt_idx_hist = np.zeros((self.N, self.time_steps), dtype=np.bool)
         self.mu_hist = np.zeros(self.time_steps, dtype=np.float32)
         self.mutations_hist = np.ones(self.time_steps, dtype=np.float32)
-        self.w_not_payed_hist = np.ones(self.time_steps, dtype=np.int32)
+        self.W_not_paid_hist = np.ones(self.time_steps, dtype=np.int32)
+        self.w_paid_hist = np.empty(self.time_steps, dtype=np.int32)
         # Initial values of history arrays
         self.w_hist[:, 0] = self.w
         self.d_hist[:, 0] = self.d
@@ -72,7 +74,8 @@ class WorkForce():
         self.went_bankrupt_idx_hist[:, 0] = self.went_bankrupt_idx
         self.mutations_hist[0] = 0
         self.mu_hist[0] = self.mu
-        self.w_not_payed_hist[0] = self.W_not_payed
+        self.W_not_paid_hist[0] = self.W_not_paid
+        self.w_paid_hist[0] = self.w_paid
         
     
     def _store_values_in_history_arrays(self):
@@ -86,7 +89,8 @@ class WorkForce():
         self.went_bankrupt_idx_hist[:, self.current_time] = self.went_bankrupt_idx
         self.mu_hist[self.current_time] = self.mu
         self.mutations_hist[self.current_time] = np.sum(self.mutations_arr)
-        self.w_not_payed_hist[self.current_time] = self.W_not_payed
+        self.W_not_paid_hist[self.current_time] = self.W_not_paid
+        self.w_paid_hist[self.current_time] = self.w_paid
         
         # Reset values for next step
         self.went_bankrupt = 0
