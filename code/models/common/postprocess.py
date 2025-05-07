@@ -6,6 +6,7 @@ import scipy.special
 from scipy.ndimage import uniform_filter1d
 import scipy.signal
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 import matplotlib.ticker as ticker  
 import h5py
 import re
@@ -13,6 +14,7 @@ from sklearn.neighbors import KernelDensity
 from run import dir_path_data, file_path, dir_path_output
 import general_functions
 import yfinance as yf
+import time
 
 
 class PostProcess:
@@ -60,6 +62,7 @@ class PostProcess:
     
     def _get_data(self, gname):
         """Load data from gname if it has not already been loaded."""
+        if gname is None: gname = self.group_name
         if gname not in self.loaded_groups:
             self._load_data_group(gname)
         # Set the attributes from the loaded data
@@ -209,7 +212,6 @@ class PostProcess:
         axis.tick_params(axis="both", width=tick_width_minor, length=tick_length_minor, which="minor")
 
     
-    
     def _axis_log_ticks_and_labels(self, axis, exponent_range, labels_skipped=1, numticks=10, base=10.0, which="y"):
         """_summary_
 
@@ -235,6 +237,50 @@ class PostProcess:
             axis.xaxis.set_minor_locator(ticker.LogLocator(base=base, subs='auto', numticks=numticks))
             # axis.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: '{:.0e}'.format(x) if x in [base**i for i in range(*exponent_range, labels_skipped+1)] else ''))
             axis.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: r'${{10^{{{}}}}}$'.format(int(np.log10(x))) if x in [base**i for i in range(*exponent_range, labels_skipped+1)] else ''))
+
+
+    def format_scientific_latex(self, x, precision=1, include_mantissa=True):
+        exponent = int(np.floor(np.log10(x)))
+        mantissa = x / 10**exponent
+        if include_mantissa:
+            return fr"{mantissa:.{precision}f} \times 10^{{{exponent}}}"
+        else:
+            return fr"10^{{{exponent}}}"
+
+
+    def _subplot_label(self, axis, index, location=(0.05, 0.9), prefix="", suffix=")", 
+                    fontsize=16, weight="bold", uppercase=False,
+                    color="black", outline_color=None):
+        """
+        Add a subplot label like 'a)', optionally with color and outline for visibility.
+        
+        Args:
+            axis: The matplotlib axis to label.
+            index: The subplot index (0 = 'a', 1 = 'b', ...).
+            location: (x, y) in axis coordinates.
+            prefix/suffix: Optional characters like '(', ')'.
+            fontsize: Font size.
+            weight: Font weight (e.g., 'bold').
+            uppercase: Use uppercase letters if True.
+            color: Text color.
+            outline: Add black/white outline for contrast if True.
+        """
+        # Compute label text
+        letter = chr(ord("A") + index) if uppercase else chr(ord("a") + index)
+        label = f"{prefix}{letter}{suffix}"
+        
+        # Optional outline (stroke)
+        effects = [pe.withStroke(linewidth=2, foreground=outline_color)] if outline_color is not None else None
+
+        axis.text(*location, label,
+                transform=axis.transAxes,
+                fontsize=fontsize,
+                fontweight=weight,
+                color=color,
+                va="top",
+                ha="left",
+                path_effects=effects)
+
 
 
     def time_from_negative_income_to_bankruptcy(self, show_plot):
@@ -592,25 +638,22 @@ class PostProcess:
         plt.show()
     
     
-    def running_KDE(self, x_data: str, bandwidth=None, eval_points=100, kernel="gaussian", data_lim=None, gname=None):
+    def running_KDE(self, x_data: str, bandwidth=None, eval_points=100, kernel="gaussian", data_lim=None, gname=None, time_steps_to_include=None):
         """Loop over all time steps and calculate the KDE for each time step.
         """
         # Get data
         if gname is None:
             gname = self.group_name
         self._get_data(gname)
-        add_time = 0
         if x_data == "salary":
             x_data = self.s
         elif x_data == "capital":
             x_data = -self.d
-        elif x_data == "delta_debt":
-            x_data = -np.diff(self.d, axis=1)
-            add_time = 1  # For delta_debt need to add an additional time step to account for the difference losing one
         elif x_data == "workers":
             x_data = self.w
             
-        data, time_steps = self._skip_values(x_data, self.time_steps-add_time)
+        data, time_steps = self._skip_values(x_data, self.time_steps)
+        if time_steps_to_include is not None: time_steps = time_steps_to_include  # Option to not use the whole time series, but only time_steps_to_include
         # Calculate points for the KDE to be evaulated at such that all times have the same evaluation points
         if np.any(data_lim == None):
             data_lim = (data.min(), data.max())
@@ -716,18 +759,16 @@ class PostProcess:
 
 
     def _worker_diversity(self, gname=None):
-        if gname is None:
-            gname = self.group_name
         # Get data
         self._get_data(gname)
         # Skip values
         time, workers = self._skip_values(self.time_values, self.w)
         # Calculate the worker diversity
         diversity_arr = np.zeros(len(time))
-        for i in range(len(time)):
-            p = workers[:, i] / np.sum(workers[:, i])
-            diversity = 1 / np.sum(p**2)
-            diversity_arr[i] = diversity
+        for t in range(len(time)):
+            w_t = workers[:, t]
+            diversity = np.sum(w_t) ** 2 / np.sum(w_t ** 2)
+            diversity_arr[t] = diversity
         
         return time, diversity_arr
     
@@ -1213,11 +1254,11 @@ class PostProcess:
         return centers, pmf
 
     
-    def _get_lifespan(self):
+    def _get_lifespan(self, gname=None):
         """For each company, find the number of time steps between two C=0 events i.e. birth to death
         """
         # Get data
-        self._get_data(self.group_name)
+        self._get_data(gname)
         C = self._skip_values(-self.d)
         
         lifespan_all = []
@@ -1240,15 +1281,33 @@ class PostProcess:
         return df["Symbol"].tolist()
 
 
-    def _save_sp500_asset_return(self, change_days=10):
-        # Get all 503 tickers from Wikipedia, download prices, remove NaNs
+    def _save_sp500_asset_return(self, change_days=10, batch_size=10):
+
         tickers = self._get_sp500_constituents()
-        prices = yf.download(tickers, start="2000-01-01", end="2025-04-01")["Close"]
-        valid_prices = prices.dropna(axis=1, thresh=0.9*len(prices))
-        # Calculate the asset return
+        all_prices = []
+
+        print(f"Downloading {len(tickers)} tickers in batches of {batch_size}...")
+
+        for i in range(0, len(tickers), batch_size):
+            batch = tickers[i:i + batch_size]
+            try:
+                prices = yf.download(batch, start="2000-01-01", end="2025-04-01")["Close"]
+                all_prices.append(prices)
+            except Exception as e:
+                print(f"Batch {i//batch_size} failed: {e}")
+            time.sleep(10)  # delay to avoid being rate-limited
+
+        # Combine and clean
+        all_prices_df = pd.concat(all_prices, axis=1)
+        valid_prices = all_prices_df.dropna(axis=1, thresh=0.9 * len(all_prices_df))
+
+        # Compute returns
         log_returns = np.log(valid_prices / valid_prices.shift(change_days)).dropna()
-        # Save data
-        log_returns.to_csv(f"asset_return_sp500_changedays{change_days}")
+
+        # Save
+        filename = dir_path_data / f"asset_return_sp500_changedays{change_days}.csv"
+        log_returns.to_csv(filename)
+        print(f"Saved {log_returns.shape[1]} tickers' returns.")
 
 
     def _load_sp500_asset_return(self, change_days=10):
@@ -1260,12 +1319,13 @@ class PostProcess:
         Returns:
             np.ndarray: Log returns over change_days time
         """
+        filename = dir_path_data / f"asset_return_sp500_changedays{change_days}.csv"
         try:
-            log_returns = pd.read_csv(f"asset_return_sp500_changedays{change_days}", index_col=0, parse_dates=True)
+            log_returns = pd.read_csv(filename, index_col=0, parse_dates=True)
         except FileNotFoundError:
             print("No Yfinance data for S&P 500 found. Saving data now")
             self._save_sp500_asset_return(change_days=change_days)
-            log_returns = pd.read_csv(f"asset_return_sp500_changedays{change_days}", index_col=0, parse_dates=True)
+            log_returns = pd.read_csv(filename, index_col=0, parse_dates=True)
         return np.ravel(log_returns)
     
     
@@ -1285,6 +1345,75 @@ class PostProcess:
         
         return spread_over_mean, som_time, spread_over_mean_NBER, som_time_NBER
     
+
+    def bootstrap_median_ci(self, data, n_bootstrap=1000, ci=0.68):
+        """Bootstrap estimate of the median and its error."""
+        medians = np.median(np.random.choice(data, size=(n_bootstrap, len(data)), replace=True), axis=1)
+        lower = np.percentile(medians, (1 - ci) / 2 * 100)
+        upper = np.percentile(medians, (1 + ci) / 2 * 100)
+        err = (upper - lower) / 2
+        return np.median(data), err
+
+
+    def time_scale_of_the_system(self):
+        """Compare timescales in model and data (recession time, duration, company lifespan)."""
+        # Load data
+        tb_model, dur_model = self._load_recession_results()
+        tb_data, dur_data = self._load_recession_data()
+        life_model = self._get_lifespan()
+        life_data_x, life_data_logy = self._load_lifespan_data()
+        # Skip first point in life_data, as it is an outlier
+        life_data_x = life_data_x[1:]
+        life_data_logy = life_data_logy[1:]
+        # Convert NBEr to years
+        tb_data /= 365.25
+        dur_data /= 365.25
+        
+        results = []
+
+        # --- Compare medians of tb and dur ---
+        for label, model, data in [("Time between recessions", tb_model, tb_data),
+                                ("Recession duration", dur_model, dur_data)]:
+            median_model, err_model = self.bootstrap_median_ci(model)
+            median_data, err_data = self.bootstrap_median_ci(data)
+
+            diff = median_model - median_data
+            diff_err = np.sqrt(err_model**2 + err_data**2)
+
+            ratio = median_model / median_data
+            ratio_err = ratio * np.sqrt((err_model/median_model)**2 + (err_data/median_data)**2)
+
+            results.append({
+                "Metric": label,
+                "Model": f"${median_model:.2f} \\pm {err_model:.2f}$",
+                "Data": f"${median_data:.2f} \\pm {err_data:.2f}$",
+                "Ratio": f"${ratio:.2f} \\pm {ratio_err:.2f}$"
+            })
+
+        # --- Lifespan half-time from CDF = 0.5 (assume exponential tail) ---
+        half_life_model = np.median(life_model)
+        tau_model = half_life_model / np.log(2)
+
+        counts = 10 ** life_data_logy
+        pmf = counts / np.sum(counts)      # Normalize to get PMF
+        cdf = np.cumsum(pmf)               # Compute CDF
+        # Find the first index where CDF >= 0.5
+        half_idx = np.argmax(cdf >= 0.5)
+        half_life_data = life_data_x[half_idx]
+        tau_data = half_life_data / np.log(2)
+
+        tau_ratio = tau_model / tau_data
+
+        results.append({
+            "Metric": "Lifespan half-time",
+            "Model": f"${half_life_model:.2f}$",
+            "Data": f"${half_life_data:.2f}$",
+            "Ratio": f"${tau_ratio:.2f}$"
+        })
+
+        df = pd.DataFrame(results)
+        return df
+
     
     def _save_inflation_data(self, source="CPI", start="1959-01-01", end="2025-04-01"):
         tickers = {
@@ -1375,3 +1504,67 @@ class PostProcess:
             print(f"{change_type} is not a valid change_type")
         
         return variable, inflation
+    
+    
+    def _save_N_W_results(self, gname_arr):
+        """Calculate the following, based on input:
+            1. Spread / Mean each time step, then mean that. 
+            2. Median lifespan
+        """
+        dimensions = gname_arr.shape
+        diversity_arr = np.empty_like(gname_arr, dtype=np.float32)
+        median_lifespan_arr = np.empty_like(diversity_arr)
+        N_arr = np.empty(dimensions[0], dtype=np.int32) 
+        ratio_arr = np.empty(dimensions[1], dtype=np.int32)
+        
+        for i in range(dimensions[0]):
+            for j in range(dimensions[1]):
+                lifespan = self._get_lifespan(gname_arr[i, j])
+                median_lifespan = np.median(lifespan)
+                _, D = self._worker_diversity(gname_arr[i, j])
+                D_mean = np.mean(D) / self.N
+                # Store values
+                diversity_arr[i, j] = D_mean
+                median_lifespan_arr[i, j] = median_lifespan
+                ratio_arr[j] = int(self.W / self.N)  # Is the same for all i, so will overwrite.
+            N_arr[i] = self.N * 1
+
+        filename = dir_path_output / f"N_W_results_{self.group_name}.npz"
+        np.savez(filename, N=N_arr, ratio=ratio_arr, D=diversity_arr, lifespan=median_lifespan_arr)
+        return N_arr, ratio_arr, diversity_arr, median_lifespan_arr
+
+
+    def _load_N_W_results(self, gname_arr):
+        filename = dir_path_output / f"N_W_results_{self.group_name}.npz"
+        try:
+            with np.load(filename) as data:
+                N = data["N"]
+                ratio = data["ratio"]
+                D = data["D"]
+                lifespan = data["lifespan"]
+                return N, ratio, D, lifespan
+        except FileNotFoundError:
+            print(f"No N_W data found for {self.group_name}. Creating data now.")
+            N_arr, ratio_arr, diversity_arr, median_lifespan_arr = self._save_N_W_results(gname_arr)
+            return N_arr, ratio_arr, diversity_arr, median_lifespan_arr
+        
+    
+    def _save_KDE(self, gname, KDE_par: dict):
+        # KDE
+        s_eval, KDE_prob = self.running_KDE("salary", **KDE_par, gname=gname)  # KDE probabilities
+        filename = dir_path_output / f"KDE_{gname}.npz"
+        np.savez(filename, s_eval=s_eval, KDE_prob=KDE_prob)
+        return s_eval, KDE_prob
+
+
+    def _load_KDE(self, gname, KDE_par: dict):
+        filename = dir_path_output / f"KDE_{gname}.npz"
+        try:
+            with np.load(filename) as data:
+                s_eval = data["s_eval"]
+                KDE_prob = data["KDE_prob"]
+        except FileNotFoundError:
+            print(f"No KDE data found for {gname}. Creating data now.")
+            s_eval, KDE_prob = self._save_KDE(gname, KDE_par)
+        return s_eval, KDE_prob
+        
