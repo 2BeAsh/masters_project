@@ -197,15 +197,16 @@ class RunWorkForce(MethodsWorkForce):
         self.ds = ds_current
             
 
-    def generate_m_arr_data(self, m_vals, N_repeat, linear_smin: bool, store_data=True, alpha=None, N=None, W=None):
+    def generate_m_arr_data(self, m_vals, N_repeat, linear_smin=None, store_data=True, alpha=None, N=None, W=None):
         """Store data for different m values with N_repeat repeats or if store_data=False only return group names.
 
         Args:
             m_vals (_type_): _description_
             N_repeat (_type_): _description_
+            linear_smin (bool): If True, smin is updated to be 0.1 * m, otherwise it is fixed.
 
         Returns:
-            np.ndarray: Group name arrays for ds values with repeats
+            np.ndarray (m, N_repeat, time): Group name arrays for ds values with repeats
         """
         # Get current values such that they can later be reset to these
         current_N = self.N
@@ -229,7 +230,10 @@ class RunWorkForce(MethodsWorkForce):
             for j in range(N_repeat):
                 self._set_seed(seed_arr[i, j])
                 self.mutation_magnitude = m
-                if linear_smin: self.salary_min = m / 10
+                if isinstance(linear_smin, list):
+                  self.salary_min = linear_smin[i] * m
+                elif linear_smin is not None:
+                    self.salary_min = m / 10
                 group_name_arr[i, j] = self._get_group_name()
                 if store_data: self.store_data_in_group(print_info=False)
         
@@ -336,7 +340,10 @@ class RunWorkForce(MethodsWorkForce):
         self.N = current_N
         self.W = current_W
         
+        if N_repeat == 1:
+            return group_name_arr.flatten()
         return group_name_arr
+
 
 
     def generate_alpha_arr_data(self, alpha_vals, N_repeat, store_data=True, N=None, W=None):
@@ -488,6 +495,31 @@ class RunWorkForce(MethodsWorkForce):
         if no_repeated_measurements:
             return N_gname_arr.flatten(), ratio_gname_arr.flatten()
         return N_gname_arr, ratio_gname_arr
+    
+    
+    def generate_N_W_simple(self, N_values, ratio_vals, store_data):
+        # Store current values
+        current_N = self.N
+        current_W = self.W
+        current_seed = self.seed
+        
+        dimensions = (len(N_values), len(ratio_vals))
+        gname_arr = np.empty(dimensions, dtype=object)
+        seed_values = np.arange(gname_arr.size).reshape(*dimensions)
+        
+        for i, N in enumerate(N_values):
+            self.N = N
+            for j, ratio in enumerate(ratio_vals):
+                self._set_seed(seed_values[i, j])
+                self.W = N * ratio
+                gname_arr[i, j] = self._get_group_name()
+                if store_data: self.store_data_in_group(print_info=False)                
+        # Reset values
+        self._set_seed(seed=current_seed)
+        self.N = current_N
+        self.W = current_W
+        
+        return gname_arr
     
     
     def generate_system_data(self, alpha_values, N_values, W_factor, store_data=True):
