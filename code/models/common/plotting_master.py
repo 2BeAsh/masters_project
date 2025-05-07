@@ -5,7 +5,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.colors import PowerNorm
 from matplotlib.patches import Patch
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
-from matplotlib.ticker import MaxNLocator, FormatStrFormatter, NullFormatter, LogFormatterMathtext, LogLocator
+from matplotlib.ticker import MaxNLocator, FormatStrFormatter, NullFormatter, LogFormatterMathtext, LogLocator, SymmetricalLogLocator, LogFormatter, FixedLocator
 # Numerical
 import numpy as np
 import pandas as pd
@@ -72,17 +72,19 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             self.xlim = (self.skip_values, self.time_steps)
 
 
-    def plot_salary(self, show_spread=False, window_size=1, axis=None, xlim=None):
+    def plot_salary(self, show_profit=False, window_size=1, axis=None, xlim=None, yscale="linear"):
         """Plot the mean salary and fraction who went bankrupt on twinx. Plot the spread (std/mean) on a subplot below it."""
         self._get_data(self.group_name)
-        mean_salary = self.s.mean(axis=0)[self.skip_values:]
+        # mean_salary = self.s.mean(axis=0)[self.skip_values:]
         
-        mu, w_not_payed = self._skip_values(self.mu, self.w_not_payed)
-        mu = mu / (self.W - w_not_payed)
+        mu, s, w, went_bankrupt, time_values = self._skip_values(self.mu, self.s, self.w, self.went_bankrupt, self.time_values)
+        mu = mu / (self.W)
         # median_salary = np.median(self.s, axis=0)[self.skip_values:]
-        fraction_bankrupt = (self.went_bankrupt[self.skip_values:] / self.N)
-        spread = (self.s.std(axis=0)[self.skip_values:] / mean_salary)
-        time_values = np.arange(self.skip_values, self.time_steps)
+        N_nonw0 = self.N - np.count_nonzero(w==0, axis=0)
+        fraction_bankrupt = (went_bankrupt / N_nonw0)
+        
+        above_1_idx = np.where(fraction_bankrupt>1)
+        # spread = (self.s.std(axis=0)[self.skip_values:] / mean_salary)
         
         # Rolling averages
         fraction_bankrupt = uniform_filter1d(fraction_bankrupt, size=window_size)
@@ -90,14 +92,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Create figure
         if axis is None:
-            nrows = 1 if not show_spread else 2
+            nrows = 1 if not show_profit else 2
             fig, ax0 = plt.subplots(nrows=nrows, figsize=(10, 5))
         
-        if show_spread:
+        if show_profit:
             ax0, ax1 = ax0
         
         # ax0 - Salary and fraction who went bankrupt
-        c0 = self.colours["salary"]
+        c0 = self.colours["mu"]
         c1 = self.colours["bankruptcy"]
         
         # Bankruptcy
@@ -111,23 +113,34 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax0.plot(time_values, mu, label=r"$\mu/W$", c=self.colours["mu"])
         # ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.7, ls="dotted")
         if xlim is None: xlim = self.xlim
-        ax0.set(xlim=xlim, ylabel="Price", yscale="linear", title="Mean salary and bankruptcies")
-        ax0.set_ylabel("Price", color=c0)
+        ax0.set(xlim=xlim, xlabel="Time [a.u.]", yscale=yscale, )#title="Mean salary and bankruptcies")
+        if yscale == "linear": ylabel = "Price [a.u.]" 
+        else: ylabel = "Log Price [a.u.]"
+        ax0.set_ylabel(ylabel, color=c0)
         ax0.tick_params(axis='y', labelcolor=c0)
         ax0.grid()
-        self._add_legend(ax0, ncols=3, x=0.5, y=0.9)
+        # self._add_legend(ax0, ncols=3, x=0.5, y=0.9)
         
-        if show_spread:
-            # ax1 - Spread
-            ax1.plot(time_values, spread, label="Spread")
-            ax1.set(xlabel="Time", xlim=self.xlim, ylabel="Spread", title="Spread (std/mean)")
+        if show_profit:
+            # ax1 - profit
+            mean_s = np.mean(s, axis=0)  # Average over company
+            ax1.plot(time_values, mu - mean_s, c=self.colours["mu"])
+            ax1.set(xlabel="Time [a.u.]", xlim=self.xlim, ylabel=r"$\mu / W - \bar{s}$")
+            ax0.set(xlabel="")
             ax1.grid()
+            if yscale == "log":
+                ax1.set_yscale("symlog", linthresh=1e-2)
+                ax1.yaxis.set_major_locator(FixedLocator([-1e10, -1e5, 0, 1e5, 1e10,]))
+                ax1.yaxis.set_major_formatter(LogFormatterMathtext(base=10))
         
             # Plot the peaks as vertical lines on ax0 and ax1
             if np.any(self.peak_idx != None):
                 for peak in self.peak_idx:
                     ax0.axvline(x=peak, ls="--", c="grey", alpha=0.7)
                     ax1.axvline(x=peak, ls="--", c="grey", alpha=0.7)
+        
+        self._subplot_label(ax0, 0)
+        self._subplot_label(ax1, 1)
         
         self._text_save_show(fig, ax0, "salary", xtext=0.05, ytext=0.95, fontsize=6)
         
@@ -187,8 +200,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         mean_C = C.mean(axis=0)[self.skip_values:]
         median_C = np.median(C, axis=0)[self.skip_values:]
         # mean_salary = self.s.mean(axis=0)[self.skip_values:]
-        mu, w_not_payed = self._skip_values(self.mu, self.w_not_payed)
-        mean_salary = mu / (self.W - w_not_payed)
+        mu = self._skip_values(self.mu,)
+        mean_salary = mu / (self.W )
         fraction_bankrupt = (self.went_bankrupt[self.skip_values:] / self.N)
         time_values = np.arange(self.skip_values, self.time_steps)
         C_final = C[:, -1]
@@ -342,44 +355,158 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         self._text_save_show(fig, ax, "multiple_mutation_size_minmax", xtext=0.05, ytext=0.75)
     
     
-    def plot_min_max_vs_m(self, group_name_arr, data_name: str):
+    def plot_min_max_vs_m(self, group_name_arr_linear, data_name: str, smooth_size=1, time_points_to_show=500):
         """Plot the mean of repeated measurements of the minimum and maximum of the mean salary, together with their uncertanties.
         """
-        # Calculate mean and std of min and max salary for each m
-        self._get_data(group_name_arr[0, 0])
-        mean_salary_arr, variable_dict = self._load_multiple_variable_repeated(group_name_arr, data_name)
-        m_vals = variable_dict["m"]
+        # fig, ax_arr = plt.subplots(figsize=(10, 10), nrows=2, ncols=2, height_ratios=[2, 1], sharey="row", sharex="row", )
+        fig, ax_arr = plt.subplots(figsize=(10, 10), nrows=2, ncols=1, height_ratios=[2, 1], sharey="row", sharex="row", )
         
-        N_repeats = np.shape(mean_salary_arr)[1]
-        time_steps = np.shape(mean_salary_arr)[2]
-        
-        min_arr = np.min(mean_salary_arr, axis=2)
-        mean_min_arr = np.mean(min_arr, axis=1) / m_vals  # Normalize the minimum salary by the mutation magnitude
-        std_mean_min_arr = np.std(min_arr, axis=1, ddof=1) / np.sqrt(N_repeats) / m_vals
-        
-        max_arr = np.max(mean_salary_arr, axis=2) 
-        mean_max_arr = np.mean(max_arr, axis=1) / m_vals  # Normalize the maximum salary by the mutation magnitude
-        std_mean_max_arr = np.std(max_arr, axis=1, ddof=1) / np.sqrt(N_repeats) / m_vals
+        def _load_and_plot(gname_arr, axis_tuple):
+            # Calculate mean and std of min and max salary for each m
+            self._get_data(gname_arr[0, 0])
+            mean_salary_arr, variable_dict = self._load_multiple_variable_repeated(gname_arr, data_name)
+            m_vals = variable_dict["m"]
+            
+            N_repeats = np.shape(mean_salary_arr)[1]
+            time_steps = np.shape(mean_salary_arr)[2]
+            time_values = np.arange(self.skip_values, time_steps+self.skip_values)
+            
+            min_arr = np.min(mean_salary_arr, axis=2)
+            mean_min_arr = np.mean(min_arr, axis=1) / m_vals  # Normalize the minimum salary by the mutation magnitude
+            std_mean_min_arr = np.std(min_arr, axis=1, ddof=1) / np.sqrt(N_repeats) / m_vals
+            
+            max_arr = np.max(mean_salary_arr, axis=2) 
+            mean_max_arr = np.mean(max_arr, axis=1) / m_vals  # Normalize the maximum salary by the mutation magnitude
+            std_mean_max_arr = np.std(max_arr, axis=1, ddof=1) / np.sqrt(N_repeats) / m_vals
+            
+            # Plotting
+            ax_ts, ax_extr = axis_tuple
+            c_list = general_functions.list_of_colors
+            # Time series
+            # Take the first of the reapeated measurement graphs and plot for each m value
+            for i, m in enumerate(m_vals):
+                mu = mean_salary_arr[i, 0, :]  # Get data to the i'th m value for the 0'th repeated measurement
+                mu_smooth = uniform_filter1d(mu, size=smooth_size)
+                mu_show = mu_smooth[:time_points_to_show]
+                mu_show_norm = mu_show / np.mean(mu_show)
+                
+                text = self.format_scientific_latex(m, precision=0, include_mantissa=False)
+                text_full = fr"$m = {text}$"
+                ax_ts.plot(time_values[:time_points_to_show], mu_show_norm, alpha=0.9, c=c_list[i], label=text_full)
+                # Write m-value in text
+                # y_text = np.mean(mu_smooth)
+                # x_text = time_values[0] - 25
+                # ax_ts.text(x_text, y_text, s=text_full, fontsize=10, rotation=25)
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        label_min = r"$\min(\mu)/(Wm)$"
-        label_max = r"$\max(\mu)/(Wm)$"
-        ax.errorbar(m_vals, mean_min_arr, yerr=std_mean_min_arr, fmt="v", label=label_min, color="k")
-        ax.errorbar(m_vals, mean_max_arr, yerr=std_mean_max_arr, fmt="^", label=label_max, color="k")
-        ax.set(xlabel=r"$m$", ylabel="Price", yscale="log", xscale="log")
-        # ax.set_title(f"Repeated measurements of min and max salary, N={N_repeats}, t={time_steps}", fontsize=10)
-        ax.grid()
+            ax_ts.set(xlabel="Time [a.u.]", ylabel=r"Normalized Average Price $\mu/W$", yscale="linear")
+            ax_ts.grid()
+            ax_ts.legend(frameon=False)
+            # Extremum
+            label_min = r"Minimum"
+            label_max = r"Maximum"
+            ax_extr.errorbar(m_vals, mean_min_arr, yerr=std_mean_min_arr, fmt="v", label=label_min, color="k")
+            ax_extr.errorbar(m_vals, mean_max_arr, yerr=std_mean_max_arr, fmt="^", label=label_max, color="k")
+            ax_extr.set(xlabel=r"$m$", ylabel=r"Average Price relative to $m$", yscale="linear", xscale="log")
+            ax_extr.grid()
+            y_ticks_extr = [0.5, 1, 1.5, 2]
+            self._axis_ticks_and_labels(ax_extr, y_ticks=y_ticks_extr, y_labels=y_ticks_extr)
+            
+            # self._add_legend(ax_extr, ncols=2, y=0.9, fontsize=15)
+            ax_extr.legend(frameon=False, loc="center right")
+            
+            # Subplot labels
+            self._subplot_label(ax_ts, index=0)
+            self._subplot_label(ax_extr, index=1, location=(0.05, 0.5))
         
-        self._add_legend(ax, ncols=2, y=0.9, fontsize=15)
+        # Run the plotter function
+        _load_and_plot(group_name_arr_linear, ax_arr)
+        # _load_and_plot(group_name_arr, (ax_arr[0, 0], ax_arr[1, 0]))
+        # _load_and_plot(group_name_arr_linear, (ax_arr[0, 1], ax_arr[1, 1]))
         
         # Text, save show
         save_name = "min_max_salary_vs_m"
         # Include the last minimum salary taken from the group name to the save name
-        print(self.ds)
-        last_s_min = group_name_arr[-1, -1].split("_")[-2]
+        last_s_min = group_name_arr_linear[-1, -1].split("_")[-2]
         combined_save_name = save_name + last_s_min
         self._save_fig(fig, combined_save_name)
         plt.show()
+
+
+    def plot_smin_m_ratio(self, group_name_arr, smooth_size=1, time_points_to_show=500):
+        
+        fig, ax_tuple = plt.subplots(figsize=(10, 10), height_ratios=[2, 1], ncols=1, nrows=2)
+        
+        def _load_and_plot(gname_arr, axis_tuple):
+            # Calculate mean and std of min and max salary for each m
+            self._get_data(gname_arr[0, 0])
+            mean_salary_arr, variable_dict = self._load_multiple_variable_repeated(gname_arr, "mu")
+            m_vals = variable_dict["m"]
+            smin_vals = variable_dict["smin"]
+            
+            N_repeats = np.shape(mean_salary_arr)[1]
+            time_steps = np.shape(mean_salary_arr)[2]
+            time_values = np.arange(self.skip_values, time_steps+self.skip_values)
+            
+            min_arr = np.min(mean_salary_arr, axis=2)
+            mean_min_arr = np.mean(min_arr, axis=1) / m_vals   # Normalize the minimum salary by the mutation magnitude
+            std_mean_min_arr = np.std(min_arr, axis=1, ddof=1) / np.sqrt(N_repeats) / m_vals 
+            
+            max_arr = np.max(mean_salary_arr, axis=2) 
+            mean_max_arr = np.mean(max_arr, axis=1) / m_vals   # Normalize the maximum salary by the mutation magnitude
+            std_mean_max_arr = np.std(max_arr, axis=1, ddof=1) / np.sqrt(N_repeats) / m_vals 
+            
+            # Plotting
+            ax_ts, ax_extr = axis_tuple
+            
+            # Time series
+            # Take the first of the reapeated measurement graphs and plot for each m value
+            c_list = general_functions.list_of_colors
+            for i, smin in enumerate(smin_vals):
+                smin_factor_text = self.format_scientific_latex(smin/m_vals[i], precision=0, include_mantissa=False)
+                text_full = fr"$s_\text{{min}}/m = {smin_factor_text}$"
+
+                # Write m-value in text
+                mu = mean_salary_arr[i, 0, :]  # Get data to the i'th m value for the 0'th repeated measurement
+                mu_smooth = uniform_filter1d(mu, size=smooth_size)
+                mu_show = mu_smooth[:time_points_to_show]
+                ax_ts.plot(time_values[:time_points_to_show], mu_show, alpha=0.8, c=c_list[i], label=text_full)
+                y_text = mu_show[0]
+                x_text = time_values[0] - 15
+                # ax_ts.text(x_text, y_text, s=text_full, fontsize=12, rotation=25, fontweight="bold", color=c_list[i], backgroundcolor=(224/255,224/255,224/255))
+            
+            ax_ts.set(xlabel="Time [a.u.]", ylabel="Price [a.u.]", yscale="linear")
+            ax_ts.grid()
+            # Add a horizontal line to indicate m
+            m_text = fr"$m = {m_vals[0]}$"
+            # ax_ts.text(x_text, y=1.05*m_vals[0], s=m_text, fontsize=12, color="grey")
+            ax_ts.axhline(y=m_vals[0], ls="dashed", color="grey", label=m_text)
+            ax_ts.legend(frameon=False, loc="upper right")
+            
+            # Extremum
+            label_min = r"Minimum"
+            label_max = r"Maxmimum"
+            ax_extr.errorbar(smin_vals/m_vals, mean_min_arr, yerr=std_mean_min_arr, fmt="v", label=label_min, color="k")
+            ax_extr.errorbar(smin_vals/m_vals, mean_max_arr, yerr=std_mean_max_arr, fmt="^", label=label_max, color="k")
+            ax_extr.set(xlabel=r"$s_\text{min}/m$", ylabel="Relative Price", yscale="linear", xscale="log")
+            ax_extr.grid()
+            yticks = [0.5, 1, 1.5, 2]
+            yticklabels = yticks
+            self._axis_ticks_and_labels(ax_extr, y_ticks=yticks, y_labels=yticklabels)
+            
+            # self._add_legend(ax_extr, ncols=2, y=0.9, fontsize=15)
+            ax_extr.legend(frameon=False, loc="upper left")
+            
+            # Subplot labels
+            self._subplot_label(ax_ts, index=0)
+            self._subplot_label(ax_extr, index=1, location=(0.05, 0.5))
+        
+        
+        _load_and_plot(group_name_arr, axis_tuple=ax_tuple)
+        
+        
+        # Text, save show,
+        self._text_save_show(fig, ax_tuple[0], f"smin_m_ratio", xtext=0.05, ytext=0.75, fontsize=1)
+
 
 
     def plot_multiple_m(self, group_name_list, same_plot=False, time_values_show=500):
@@ -671,6 +798,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ds_arr = np.zeros(group_name_arr.shape[0])
         m_arr = np.zeros(group_name_arr.shape[0])
         alpha_arr = np.zeros(group_name_arr.shape[0])
+        smin_arr = np.zeros_like(alpha_arr)
         
         for i in range(group_name_arr.shape[0]):
             for j in range(group_name_arr.shape[1]):
@@ -679,13 +807,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
                 if data_name == "salary":
                     data = np.mean(self.s[:, self.skip_values:], axis=0)
                 elif data_name == "mu":
-                    data = self.mu[self.skip_values:]
+                    data = self.mu[self.skip_values:] / self.W
                 data_arr[i, j] = data
             ds_arr[i] = self.ds
             m_arr[i] = self.m
             alpha_arr[i] = self.prob_expo
+            smin_arr[i] = self.s_min
         
-        variable_dict = {"ds": ds_arr, "m": m_arr, "alpha": alpha_arr}
+        variable_dict = {"ds": ds_arr, "m": m_arr, "alpha": alpha_arr, "smin": smin_arr}
         return data_arr, variable_dict
     
 
@@ -2009,9 +2138,144 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
 
         # Text save show
         self._text_save_show(fig, axs[0, 0], "diversity_multiple_alpha", xtext=0.05, ytext=0.85, fontsize=6)
+    
+    
+    def plot_effective_smin(self):
+        """Look at the highest salaries of companies with no workers and the lowest salaries of companies with 1 worker to estimate the effective minimum wage.
+        """
+        # Get data
+        self._get_data(self.group_name)
+        s, w, mu, time_steps, time_values = self._skip_values(self.s, self.w, self.mu, self.time_steps, self.time_values)
         
+        # For each time point, find the top 5% wages with w=0 and the lowest 5% wages with w=1 (if possible)
+        s_top5_w0 = np.empty(time_steps)
+        s_low5_w1 = np.empty(time_steps)
+        for i in range(time_steps):
+            w_i = w[:, i]
+            s_i = s[:, i]
+            # Calculate the top 5% wages of the w = 0 companies
+            w0 = w_i[w_i == 0]
+            if len(w0) == 0:
+                s_top5_w0[i] = np.nan
+            else:
+                s_i_w0 = s_i[w0]
+                s_i_w0_sort = np.sort(s_i_w0)
+                n_in_top5 = int(np.max((0.95 * len(s_i_w0_sort), len(s_i_w0_sort)-1)))  # Ensure has at least 1 company
+                s_i_w0_top5 = s_i_w0_sort[n_in_top5:]  # Get top 5% best
+                s_i_w0_top5_mean = np.mean(s_i_w0_top5)
+                # s_top5_w0[i] = s_i_w0_top5_mean
+                s_top5_w0[i] = np.max(s_i_w0)
+            
+            # Lowest 5% wages with w = 1
+            w1 = w_i[w_i == 1]
+            if len(w1) == 0:
+                s_low5_w1[i] = np.nan
+            else:
+                s_i_w1 = s_i[w1]
+                s_i_w1_sort = np.sort(s_i_w1)
+                n_in_low5 = int(np.max((0.05*len(s_i_w1_sort), 1)))
+                s_i_w1_low5 = s_i_w1_sort[: n_in_low5]
+                s_i_w1_low5_mean = np.mean(s_i_w1_low5)
+                # s_low5_w1[i] = s_i_w1_low5_mean
+                s_low5_w1[i] = np.min(s_i_w1)
         
-    def plot_running_KDE_multiple_s_min(self, group_name_list, bandwidth_s=None, eval_points=100, s_lim=None, kernel="gaussian", show_mean=False, show_title=False):
+        fig, (ax, ax_mu) = plt.subplots(nrows=2)
+        ax.plot(time_values, s_top5_w0, "-", c="crimson", label=r"Top $5\%$ wages at $w=0$", alpha=0.8)
+        ax.plot(time_values, s_low5_w1, "-", c="dodgerblue", label=r"Lowest $5\%$ wages at $w=1$", alpha=0.6)
+        ax.axhline(y=self.s_min, linestyle="--", c="grey", alpha=0.9, label=r"$s_\text{min}$")
+        ax.set(xlabel="Time [a.u.]", ylabel="Log Price [a.u.]", yscale="log")
+        ax.grid()
+        ax.legend(frameon=False)
+
+        ax_mu.plot(time_values, mu/self.W, label=r"$\mu / W$", alpha=1)
+        ax_mu.set(ylabel="Log Price [a.u.]", yscale="log")
+        ax.grid()
+        ax.legend(frameon=False)
+        
+        # Text, save, show
+        self._text_save_show(fig, ax, "smin_effective", xtext=0.05, ytext=0.95, fontsize=1)
+
+
+    def compare_smin_lifespan(self, group_name_list):
+        # Get data
+        lifespan_list = [self._get_lifespan(name) for name in group_name_list]
+        labels = ["$s_{{\\min}}=10^{-9}$", "$s_{{\\min}}=10^{-5}$", "$s_{{\\min}}=10^{-3}$", "$s_{{\\min}}=10^{-2}$", ]  #[f"$s_{{\\min}}={name}$" for name in group_name_list]  # Clean LaTeX-style labels
+
+        # Store LaTeX table rows
+        table_rows = []
+
+        for i in range(len(lifespan_list) - 1):
+            for j in range(i + 1, len(lifespan_list)):
+                res = scipy.stats.cramervonmises_2samp(lifespan_list[i], lifespan_list[j])
+                row = f"{labels[i]} vs {labels[j]} & {res.statistic:.4f} & {res.pvalue:.4g} \\\\"
+                table_rows.append(row)
+
+        # Print LaTeX table
+        print(r"""\begin{table}[ht]
+            \centering
+            \caption{Cramér--von Mises test comparing company lifespan distributions across $s_{\min}$ values.}
+            \begin{tabular}{lcc}
+            \hline
+            Comparison & CvM statistic & $p$-value \\
+            \hline""")
+
+        for row in table_rows:
+            print(row)
+
+        print(r"""\hline
+            \end{tabular}
+            \end{table}""")
+
+
+    def plot_lifespan_multiple_smin(self, group_name_list, labels=["$s_{{\\min}}=10^{-8}m$", "$s_{{\\min}}=10^{-1}m$", "$s_{{\\min}}=m$", "$s_{{\\min}}=2m$"], xlim=None):
+        
+        fig, ax = plt.subplots()
+        c_list = [
+    "deepskyblue",     # bright cyan-blue
+    "mediumseagreen",  # soft green
+    "goldenrod",       # mustard yellow
+    "indianred",       # warm muted red
+    "slateblue",       # soft purple-blue
+    "coral",           # soft orange-pink
+    "darkcyan",        # deep teal
+    "darkkhaki",       # dusty yellow
+    "mediumorchid",    # magenta-violet
+    "steelblue",       # muted mid-blue
+    "rosybrown",       # earthy pinkish-gray
+    "peru"             # rich tan/brown-orange
+]  
+        # alpha_list = [0.9, 0.8, 0.6, 0.4]
+        alpha_list = np.linspace(0.3, 0.9, len(group_name_list))[::-1]
+        def _plotter(idx):
+            # ax = ax_flat[idx]
+            gname = group_name_list[idx]
+            lifespan = self._get_lifespan(gname)
+            # Bin and plot
+            bins = np.arange(0, np.max(lifespan), 1)
+            ax.hist(lifespan, bins=bins, density=True, color=c_list[idx], alpha=alpha_list[idx], label=labels[idx])
+            ax.grid()
+        
+        for i in range(len(group_name_list)):
+            _plotter(i)
+        
+        # Axis setup
+        ax.set(ylabel="Empirical PMF", xlabel="Company lifespan",  yscale="log", xlim=xlim,)
+        ax.legend(frameon=False, loc="upper right", fontsize=16)
+        ax.grid()
+        # y_ticks = [0, 0.01, 0.02, 0.03, 0.04]
+        # y_ticklabels = y_ticks[::2]
+        # self._axis_ticks_and_labels(ax, y_ticks=y_ticks, y_labels=y_ticklabels)
+        xlim = ax.get_xlim()
+        x_ticks = np.linspace(0, xlim[-1], 5).astype(np.int32)
+        # x_ticks = [1, 500, 1000, 1500, 2000]
+        x_ticklabels = x_ticks[::2]
+        self._axis_ticks_and_labels(ax, x_ticks=x_ticks, x_labels=x_ticklabels, x_dtype="int")
+        
+        # Text, save, show
+        self._text_save_show(fig, ax, "smin_lifespan", xtext=0.05, ytext=0.95, fontsize=1)
+
+        
+    def plot_running_KDE_multiple_s_min(self, group_name_list, bandwidth_s=None, eval_points=100, s_lim=None, kernel="gaussian", show_mean=False, show_title=False, suffix_list=None):
         figsize = (10, 5)
         less_than_four_datasets = len(group_name_list) < 4
         if less_than_four_datasets:
@@ -2049,7 +2313,6 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             KDE_prob_arr[i, :, :] = KDE
             mu_arr[i, :] = mu
             s_min_arr[i] = s_min
-            
 
         # Calculate minimum and maximum values for the colorbar
         min_val = np.min(KDE_prob_arr)
@@ -2087,6 +2350,10 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         cbar = fig.colorbar(im, ax=axs, orientation='vertical', ticks=[], pad=0.01)# fraction=0.02, pad=0.04)
         cbar.set_label(label="Frequency", fontsize=label_fontsize)
         cbar.ax.tick_params(labelsize=0)  # Remove tick labels
+
+        # Subplot label
+        for i, axis in enumerate(axs.flatten()):
+            self._subplot_label(axis, i, color="white", outline_color="darkred")
 
         if len(group_name_list) == 1:
             save_ax = axs
@@ -2719,15 +2986,22 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         mean_ticks = np.round(np.linspace(0, mean_diff.max(), 5), 2)
         mean_ticklabels = mean_ticks[::2]
 
-        ax_div.plot(time, mean_diff, c=self.colours["mu"], label=r"$\mu / W - \hat{s}$", alpha=0.9)
+        ax_div.plot(time, mean_diff, c=self.colours["mu"], label=r"$\mu / W - \bar{s}$", alpha=0.9)
         ax_div.grid()
-        ax_div.set_ylabel(r"$\mu / W - \hat{s}$", color=self.colours["mu"], fontsize=label_fontsize)
+        ax_div.set_ylabel(r"$\mu / W - \bar{s}$", color=self.colours["mu"], fontsize=label_fontsize)
         ax_div.set(xlim=self.xlim, ylim=(None, mean_ticks[-1]*1.1))
         ax_div.tick_params(axis='y', labelcolor=self.colours["mu"], labelsize=ticks_fontsize)
         # Ticks
         self._axis_ticks_and_labels(ax_div, x_ticks=time_ticks, y_ticks=mean_ticks, x_labels=time_ticklabels, y_labels=mean_ticklabels, x_dtype="int")
         ax_div.tick_params(axis='y', labelcolor=self.colours["mu"], colors=self.colours["mu"], which="both")
 
+        # Subplot labels
+        axis_all = (ax, ax_C, ax_div)
+        outline_color_list = ["black", "black", None]
+        color_list = ["white", "white", "black"]
+        for i, axis in enumerate(axis_all):
+            self._subplot_label(axis, i, fontsize=16, outline_color=outline_color_list[i], color=color_list[i])
+        
         # Text, save, show
         self._text_save_show(fig, ax, "KDE_and_diversity", xtext=0.05, ytext=0.95, fontsize=0)
         
@@ -3423,7 +3697,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         if ylim_lifespan is None: ylim_lifespan = (4e-7, 8e-2)
         bins_life_span = np.arange(1, time_max, bin_width_lifespan)
         ax_lifespan[0].hist(lifespan, bins=bins_life_span, color=self.colours["time"], density=True)
-        ax_lifespan[0].set(xlabel="Company Lifespan [a.u.]", ylabel="PDF", yscale="log", ylim=ylim_lifespan, xlim=xlim_time)
+        ax_lifespan[0].set(xlabel="Company Lifespan [a.u.]", ylabel="PMF", yscale="log", ylim=ylim_lifespan, xlim=xlim_time)
         ax_lifespan[0].grid()
         x_ticks_time = np.linspace(xlim_time[0], xlim_time[1], 5)
         x_ticklabels_time = x_ticks_time[::2]
@@ -3486,8 +3760,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         xlim_NBER = (0, 13)
         ylim_time_between = (0, 1.05*np.max((counts_time.max(), counts_time_NBER.max())))
         ylim_duration = (0, 1.05*np.max((counts_duration.max(), counts_duration_NBER.max())))
-        ax_time_between[0].set(xlabel="Time between recessions [a.u.]", ylabel="PDF", xlim=xlim_time)# ylim=ylim_time_between)
-        ax_duration[0].set(xlabel="Recession duration [a.u.]", xlim=xlim_time, ylabel="PDF")#ylim=ylim_duration)
+        ax_time_between[0].set(xlabel="Time between recessions [a.u.]", ylabel="PMF", xlim=xlim_time)# ylim=ylim_time_between)
+        ax_duration[0].set(xlabel="Recession duration [a.u.]", xlim=xlim_time, ylabel="PMF")#ylim=ylim_duration)
         ax_time_between[1].set(xlabel="Time between recessions [years]", ylabel="Counts", xlim=xlim_NBER)# ylim=ylim_time_between)
         ax_duration[1].set(xlabel="Recession duration [years]", ylabel="Counts", xlim=xlim_NBER)#ylim=ylim_duration)
         ax_time_between[0].grid()
@@ -3534,7 +3808,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         bins_size = 10 ** np.linspace(np.log10(1e-1), np.log10(np.max(w) * 10), Nbins_size)  # Log x cuts off large values if max range value is not increased
         counts_size, edges_size = np.histogram(w, bins=bins_size, density=True)
         
-        ax_size[0].set(xlabel="Company size", ylabel="PDF", yscale="log", xlim=xlim_size, ylim=ylim_size, xscale="log")
+        ax_size[0].set(xlabel="Company size", ylabel="PMF", yscale="log", xlim=xlim_size, ylim=ylim_size, xscale="log")
         ax_size[0].stairs(counts_size, edges_size, color=self.colours["workers"], alpha=1, label="Model")
         ax_size[0].plot(labels_size_data, counts_size_data, "o", color=self.colours["workers"], mec="black", label="Data")  # mec = marker edgecolor
         ax_size[0].grid()
@@ -3569,7 +3843,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax_inflation[0].grid()
         ax_inflation[1].grid()
         # Set ticks for model
-        xticks_inflation = np.linspace(time_for_inflation[0], time_for_inflation[-1], 5)
+        xticks_inflation = np.linspace(time_for_inflation[0], time_for_inflation[-1]+1, 5)  # Time for inflation is one smaller due to diff, but that makes ticks ugly
         xticklabels_inflation = xticks_inflation[::2]
         yticks_inflation = [-0.01, 0, 0.01]
         yticklabels_inflation = yticks_inflation
@@ -3587,6 +3861,10 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax_inflation[1].set_xticks(tick_positions)
         ax_inflation[1].set_xticklabels(tick_labels)        
         self._axis_ticks_and_labels(ax_inflation[1], y_ticks=yticks_inflation, y_labels=yticklabels_inflation)
+        
+        # Add subplot labels
+        for i, axis in enumerate(ax_arr.flatten()):
+            self._subplot_label(axis, i, location=(0.01, 0.9))
         
         # Text, save, show
         self._text_save_show(fig, ax_arr[0, 0], f"economic_results_alpha{self.prob_expo}", xtext=0.05, ytext=0.85, fontsize=1)
@@ -3716,4 +3994,166 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         self._text_save_show(fig, ax_mu_change, f"inflation_comparison_{change_type}", xtext=0.05, ytext=0.85, fontsize=1)
         plt.close()
 
+
+
+    def plot_CDF_parameter(self, gname_list_alpha, gname_list_smin, gname_list_m, gname_list_ds, 
+                           label_list_alpha, label_list_smin, label_list_m, label_list_ds,
+                           xlim=None, xscale="log"):
         
+        # Create figure and inpack axis
+        fig, ax_arr = plt.subplots(ncols=2, nrows=2, sharey=True, sharex=True, figsize=(10, 10))
+        ax_alpha = ax_arr[0, 0]
+        ax_smin = ax_arr[1, 0]
+        ax_m = ax_arr[0, 1]
+        ax_ds = ax_arr[1, 1]
+
+        # Tick setup
+        y_ticks = [0, 0.25, 0.5, 0.75, 1]
+        y_ticklabels = y_ticks[::2]
+        for ax in ax_arr.flatten():
+            self._axis_ticks_and_labels(ax, y_ticks=y_ticks, y_labels=y_ticklabels)
+
+        # Define plotting functions
+        def _plot_single_cdf(axis, x, label):
+            # Calculate and plot CDF
+            x_sort = np.sort(x)
+            n = len(x_sort)
+            cdf = np.arange(1, n + 1) / n
+            axis.step(x_sort, cdf, where="post", label=label)
+            
+        def _plot_cdf_parameter(axis, index, gname_list, label_list):
+            # Plot the CDF's
+            for gname, label in zip(gname_list, label_list):
+                # Get data                
+                lifespan = self._get_lifespan(gname)
+                _plot_single_cdf(axis, lifespan, label)
+            
+            # Figure setup
+            axis.grid()
+            axis.legend(frameon=False, loc="lower right", fontsize=18)
+            axis.set(xlim=xlim, xscale=xscale)
+            self._subplot_label(axis, index, fontsize=16)
+        
+        # Run the functions
+        _plot_cdf_parameter(ax_alpha, 0, gname_list_alpha, label_list_alpha)
+        _plot_cdf_parameter(ax_m, 1, gname_list_m, label_list_m)
+        _plot_cdf_parameter(ax_smin, 2, gname_list_smin, label_list_smin)
+        _plot_cdf_parameter(ax_ds, 3, gname_list_ds, label_list_ds)
+        
+        # Common axis setup
+        ax_alpha.set(ylabel="ECDF")
+        ax_smin.set(xlabel="Company Lifespan [a.u.]", ylabel="ECDF")
+        ax_ds.set(xlabel="Company Lifespan [a.u.]")
+        
+        # Text, save, show
+        self._text_save_show(fig, ax_alpha, f"lifespan_CDF", xtext=0.05, ytext=0.85, fontsize=1)
+    
+    
+    def plot_N_W(self, gname_arr, KDE_par):
+        # Get data
+        self._get_data(gname_arr[0, 0])
+        # For the imshow plots
+        N, ratio, D, lifespan = self._load_N_W_results(gname_arr)
+        # For the KDE plots
+        if KDE_par["time_steps_to_include"] is None:
+            time_points = self.time_values - self.skip_values
+            extent_time = (self.skip_values, self.time_values)
+        else:
+            time_points = KDE_par["time_steps_to_include"]
+            extent_time = (self.skip_values, self.skip_values+time_points)
+        gname_endpoints = [gname_arr[0, -1], gname_arr[-1, -1], gname_arr[0, 0], gname_arr[-1, 0]]
+        KDE_prob_arr = np.zeros((len(gname_endpoints), KDE_par["eval_points"], time_points))
+
+        for i, gname in enumerate(gname_endpoints):
+            s_eval, KDE = self._load_KDE(gname, KDE_par)
+            KDE_prob_arr[i, :, :] = KDE
+        
+        # Create figure and subplots
+        fig = plt.figure(figsize=(10, 10), constrained_layout=True)
+        gs = GridSpec(nrows=4, ncols=2, figure=fig, )
+        ax_D = fig.add_subplot(gs[0, :])
+        ax_life = fig.add_subplot(gs[1, :])
+        ax01 = fig.add_subplot(gs[2, 0])
+        ax11 = fig.add_subplot(gs[2, 1])
+        ax00 = fig.add_subplot(gs[3, 0])
+        ax10 = fig.add_subplot(gs[3, 1])
+        ax_list = [ax01, ax11, ax00, ax10]
+        
+        #  -- N_RATIO PLOTS --
+        im = ax_D.imshow(D, aspect="auto", origin="lower", cmap="YlOrRd")
+        im_life = ax_life.imshow(lifespan,  aspect="auto", origin="lower", cmap="Blues")
+        
+        # Axis setup
+        ax_D.set(ylabel=r"$W/N$")
+        ax_life.set(xlabel=r"$N$", ylabel=r"$W/N$")
+        
+        # Colorbar
+        cbar = fig.colorbar(im, ax=ax_D, pad=0.01)
+        cbar.set_label(label=r"$\bar{D} / N$", fontsize=16)
+        cbar_life = fig.colorbar(im_life, ax=ax_life, pad=0.01)
+        cbar_life.set_label(label="Median Lifetime", fontsize=16)
+        cbar.locator = MaxNLocator(nbins=3)  # Request ~4 ticks
+        cbar.update_ticks()
+        cbar_life.locator = MaxNLocator(nbins=3)  # Request ~4 ticks
+        cbar_life.update_ticks()
+        
+        # Ticks
+        # Set ticks in the center of each block
+        def _ticker(axis, Z, data_type):
+            axis.set_xticks(np.arange(len(N)))
+            axis.set_yticks(np.arange(len(ratio)))
+            # Set tick labels to actual values
+            axis.set_xticklabels(N)
+            axis.set_yticklabels(ratio)
+            # Show tick grid lines aligned with blocks
+            axis.set_xticks(np.arange(len(N)+1)-0.5, minor=True)
+            axis.set_yticks(np.arange(len(ratio)+1)-0.5, minor=True)
+            axis.grid(which="minor", color="grey", linestyle='-', linewidth=0.5)
+            axis.tick_params(which="minor", bottom=False, left=False)
+            # Print the values of each block
+            for i in range(len(ratio)):
+                for j in range(len(N)):
+                    if data_type == "float":
+                        axis.text(j, i, f"{Z[i, j]:.2f}", ha="center", va="center", color="black")
+                    else:
+                        axis.text(j, i, f"{Z[i, j]:.0f}", ha="center", va="center", color="black")
+        
+        _ticker(ax_D, D, "float")
+        _ticker(ax_life, lifespan, "int")
+        # Subplot labels
+        self._subplot_label(ax_D, index=0)
+        self._subplot_label(ax_life, index=1)
+        
+        # -- KDE PLOTS --
+        KDE_min = np.min(KDE_prob_arr)
+        KDE_max = np.max(KDE_prob_arr)
+        suffix_list = [fr"$: N={N[0]}, W/N={ratio[-1]}$",
+                       fr"$: N={N[-1]}, W/N={ratio[-1]}$",
+                       fr"$: N={N[0]}, W/N={ratio[0]}$",
+                       fr"$: N={N[-1]}, W/N={ratio[0]}$",]
+        x_ticks = np.linspace(extent_time[0], extent_time[1], 5)
+        x_ticklabels = x_ticks[::2]
+        y_ticks = np.linspace(0, KDE_par["data_lim"][1], 3)
+        y_ticklabels = np.round(y_ticks[::2], 2)
+        
+        for i, axis in enumerate(ax_list):
+            im_KDE = axis.imshow(KDE_prob_arr[i], aspect="auto", origin="lower",
+                        extent=[extent_time[0], extent_time[1], np.min(s_eval), np.max(s_eval)],
+                        cmap="hot", vmin=KDE_min, vmax=KDE_max)
+            
+            self._subplot_label(axis, index=2+i, suffix=suffix_list[i], color="white", outline_color="darkred")
+            self._axis_ticks_and_labels(axis, x_ticks, y_ticks, x_ticklabels, y_ticklabels, x_dtype="int")
+        # Remove inner ticklabels
+        ax01.set_xticklabels([])
+        ax11.set_xticklabels([])
+        ax10.set_yticklabels([])
+        ax11.set_yticklabels([])
+        # Axis setup
+        ax00.set(xlabel="Time [a.u.]", ylabel="Wage [a.u.]")
+        ax10.set(xlabel="Time [a.u.]")
+        ax01.set(ylabel="Wage [a.u.]")
+        # Add cbar
+        cbar_ax = fig.add_axes([0.908, 0.035, 0.01, 0.44])  # [left, bottom, width, height]
+        fig.colorbar(im_KDE, cax=cbar_ax, label="Wage Frequency", ticks=[])
+        # Text, save, show
+        self._text_save_show(fig, ax_life, f"N_W", xtext=0.05, ytext=0.85, fontsize=1)
