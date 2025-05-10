@@ -114,8 +114,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.7, ls="dotted")
         if xlim is None: xlim = self.xlim
         ax0.set(xlim=xlim, xlabel="Time [a.u.]", yscale=yscale, )#title="Mean salary and bankruptcies")
-        if yscale == "linear": ylabel = "Price [a.u.]" 
-        else: ylabel = "Log Price [a.u.]"
+        if yscale == "linear": ylabel = r"$\mu / W$" 
+        else: ylabel = r"Log $\mu / W$"
         ax0.set_ylabel(ylabel, color=c0)
         ax0.tick_params(axis='y', labelcolor=c0)
         ax0.grid()

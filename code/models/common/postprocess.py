@@ -1568,3 +1568,36 @@ class PostProcess:
             s_eval, KDE_prob = self._save_KDE(gname, KDE_par)
         return s_eval, KDE_prob
         
+
+    def generate_timescale_latex_tables_columnwise(self, result_list, param_list, metric_names=["Time between recessions", "Recession duration", "Lifespan half-time"]):
+        """
+        Generate two LaTeX tables: one for absolute values and one for ratios.
+        Rows: metrics, Columns: parameters (including 'Data').
+        """
+        formatted_param = [f"$\\alpha={a}$" for a in param_list]
+
+        # Prepare data storage
+        model_dict = {metric: [] for metric in metric_names}
+        ratio_dict = {metric: [] for metric in metric_names}
+
+        # Fill model values and ratios
+        for df in result_list:
+            for metric in metric_names:
+                row = df[df["Metric"] == metric].iloc[0]
+                model_dict[metric].append(row["Model"])
+                ratio_dict[metric].append(row["Ratio"])
+
+        # Extract one copy of data values
+        data_df = result_list[0]
+        data_col = [data_df[data_df["Metric"] == m].iloc[0]["Data"] for m in metric_names]
+
+        # Add 'Data' as first column
+        model_table = pd.DataFrame(model_dict, index=formatted_param).T
+        model_table.insert(0, "Data", data_col)
+
+        ratio_table = pd.DataFrame(ratio_dict, index=metric_names, columns=formatted_param)
+
+        model_latex = model_table.to_latex(escape=False, column_format="l" + "c" * model_table.shape[1], caption="Model and data timescales for each metric.", label="tab:timescales_columnwise")
+        ratio_latex = ratio_table.to_latex(escape=False, column_format="l" + "c" * ratio_table.shape[1], caption="Ratio of model to data timescales for each metric.", label="tab:ratios_columnwise")
+
+        return model_latex, ratio_latex
