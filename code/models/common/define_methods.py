@@ -3,7 +3,7 @@ from master import WorkForce
 
 
 class MethodsWorkForce(WorkForce):
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods: dict, time_steps, seed):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods: dict, inject_money_time, time_steps, seed):
         """Must define the following methods for master to work:
             _transaction()
             _pay_interest()
@@ -19,7 +19,7 @@ class MethodsWorkForce(WorkForce):
         self.transaction_method = update_methods["transaction_method"]
         self.include_bankrupt_salary_in_mu = update_methods["include_bankrupt_salary_in_mu"]
         self.who_want_to_increase = update_methods["who_want_to_increase"]
-        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, time_steps, seed)
+        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, inject_money_time, time_steps, seed)
         
         # Initial values and choice of methods
         self._pick_functions()
@@ -103,6 +103,11 @@ class MethodsWorkForce(WorkForce):
             print(f"{self.who_want_to_increase} is not a valid value for who_want_to_increase")
 
 
+    def _inject_money(self):
+        if self.current_time == self.inject_money_time:
+            self.system_money_spent *= 1.5
+        
+
     def _transaction(self):
         
         if self.transaction_method == "deterministic":
@@ -178,7 +183,7 @@ class MethodsWorkForce(WorkForce):
                     self.d += salary_payments
                 
                 self.system_money_spent = salary_payments.sum()    
-                
+        
 
     def _transaction_worker(self):
         """Companies are chosen proportionally to their number of workers, and everyone pays salary regardless of making transactiosn
@@ -510,7 +515,7 @@ class MethodsWorkForce(WorkForce):
         if N_made_a_profit > 0:
             idx_new_salary = np.random.choice(np.arange(self.N)[idx_made_a_profit], size=self.went_bankrupt, replace=True)
         
-        # If no companies made a profit, draw from the top 25% who lost the least
+        # If no companies made a profit, draw from the top 50% who lost the least
         else:
             idx_sorted = np.argsort(profit)
             idx_top_50p = idx_sorted[:int(self.N / 2)]  # Goes from low to high, and want the profit to be a large negative number
