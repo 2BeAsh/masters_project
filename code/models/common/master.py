@@ -3,7 +3,7 @@ from tqdm import tqdm
 
 
 class WorkForce():
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, time_steps, seed=None):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, inject_money_time, time_steps, seed=None):
         # Set variables
         self.N = number_of_companies
         self.W = number_of_workers 
@@ -12,6 +12,7 @@ class WorkForce():
         self.mutation_magnitude = mutation_magnitude
         self.salary_min = salary_min # Minimum salary allowed
         self.time_steps = time_steps        
+        self.inject_money_time = inject_money_time
         self.seed = seed
         
         self.group_name = self._get_group_name()
@@ -27,7 +28,7 @@ class WorkForce():
     
             
     def _get_group_name(self):
-        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_rf{self.rf_name}_alpha{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}_increase{self.who_want_to_increase}"
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_rf{self.rf_name}_alpha{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}_increase{self.who_want_to_increase}_injectmoney{self.inject_money_time}"
     
     
     def _initialize_market_variables(self):
@@ -108,6 +109,7 @@ class WorkForce():
         for i in tqdm(range(1, self.time_steps)):
             self.current_time = i
             self._transaction()
+            self._inject_money()
             self._pay_interest()
             self._update_salary()
             self._update_workers()

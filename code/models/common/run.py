@@ -17,7 +17,7 @@ file_path = dir_path_output / file_name
 
 
 class RunWorkForce(MethodsWorkForce):
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, salary_min, update_methods, time_steps, seed):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, salary_min, update_methods, inject_money_time, time_steps, seed):
         """Functions for running the simulation and storing the data.
 
         Args:
@@ -38,7 +38,7 @@ class RunWorkForce(MethodsWorkForce):
             number_of_workers = number_of_companies
         self.rf_name = interest_rate_free
         
-        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods, time_steps, seed)
+        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods, inject_money_time, time_steps, seed)
 
 
     def store_data_in_group(self, print_info=True):
