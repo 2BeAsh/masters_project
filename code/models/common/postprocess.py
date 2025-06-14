@@ -55,7 +55,8 @@ class PostProcess:
                 "s_min_list": np.array(group.attrs.get("s_min_list", None)),
                 "s_ds": np.array(group.get("s_ds", None)),
                 "bankruptcy_ds": np.array(group.get("bankruptcy_ds", None)),
-                "ds_list": np.array(group.attrs.get("ds_list", None))
+                "ds_list": np.array(group.attrs.get("ds_list", None)),
+                "seed": np.array(group.attrs.get("seed", None)),
             }
             self.loaded_groups[gname] = data
     
@@ -93,11 +94,45 @@ class PostProcess:
         self.s_ds = data["s_ds"]
         self.bankruptcy_ds = data["bankruptcy_ds"]
         self.ds_list = data["ds_list"]
+        self.seed = data["seed"]
         if self.time_steps is not None:
             self.time_values = np.arange(self.time_steps)
         else: 
             self.time_values = None
-    
+
+
+    def new_gname(
+        self,
+        time_steps=None,
+        N=None,
+        W=None,
+        ds=None,
+        mutation_magnitude=None,
+        rf_name=None,
+        prob_exponent=None,
+        salary_min=None,
+        seed=None,
+        who_want_to_increase=None,
+        number_of_transactions_per_step=1,
+        inject_money_time=0,
+    ):
+        time_steps = time_steps if time_steps is not None else self.time_steps
+        N = N if N is not None else self.N
+        W = W if W is not None else self.W
+        ds = ds if ds is not None else self.ds
+        mutation_magnitude = mutation_magnitude if mutation_magnitude is not None else self.m
+        rf_name = 0.
+        prob_exponent = prob_exponent if prob_exponent is not None else self.prob_expo
+        salary_min = salary_min if salary_min is not None else self.s_min
+        seed = seed if seed is not None else self.seed
+        who_want_to_increase = who_want_to_increase if who_want_to_increase is not None else "w0"
+
+        return (
+            f"Steps{time_steps}_N{N}_W{W}_ds{ds}_m{mutation_magnitude}_rf{rf_name}"
+            f"_alpha{prob_exponent}_smin{salary_min}_seed{seed}_increase{who_want_to_increase}"
+            f"_transactionsfactor{number_of_transactions_per_step}_injectmoney{inject_money_time}"
+        )
+
     
     def _skip_values(self, *variables):
         """For all array-like variables given, return the values from skip_values to the end of the array.
@@ -1069,9 +1104,9 @@ class PostProcess:
     
     
     def _save_recession_results(self, peak_kwargs):
-        time_between, duration = self._recession_time_between_and_duration(**peak_kwargs)
+        time_between, duration, troughs, peaks = self._recession_time_between_and_duration(**peak_kwargs, return_peaks=True)
         filename = dir_path_output / f"recession_results_{self.group_name}.npz"
-        np.savez(file=filename, time_between=time_between, duration=duration)
+        np.savez(file=filename, time_between=time_between, duration=duration, troughs=troughs, peaks=peaks)
     
     
     def _load_recession_results(self):
@@ -1080,11 +1115,13 @@ class PostProcess:
             with np.load(filename) as data:
                 time_between = data["time_between"]
                 duration = data["duration"]
-                return time_between, duration
+                troughs = data["troughs"]
+                peaks = data["peaks"]
+                return time_between, duration, troughs, peaks
         except FileNotFoundError:
             print(f"Error: No data found for {self.group_name}. Returning empty arrays")
             print("Did you forget to run _save_recession_results?")
-            return np.array([]), np.array([])
+            return np.array([]), np.array([]), np.array([]), np.array([])
     
     
     def _load_lifespan_data(self):
@@ -1099,7 +1136,22 @@ class PostProcess:
         lifespan = data[:, 0]
         counts = data[:, 1]
         return lifespan, counts
+
+
+    def _load_peak_trough_data(self):
+        file_name = "20210719_cycle_dates_pasted.csv"
+        file_path = dir_path_data / file_name
+        df = pd.read_csv(file_path, delimiter=",")
+
+        # Remove rows with missing data
+        df.dropna(axis=0, inplace=True)
+
+        # Convert the 'peak' and 'trough' columns to datetime
+        df["peak"] = pd.to_datetime(df["peak"])
+        df["trough"] = pd.to_datetime(df["trough"])
         
+        return df        
+
         
     def _load_recession_data(self, separate_post_war=False):
         """Load and preprocess NBER recession data
@@ -1113,16 +1165,7 @@ class PostProcess:
             If separate_post_war is True:
                 ((time_between_all, duration_all), (time_between_postwar, duration_postwar))
         """
-        file_name = "20210719_cycle_dates_pasted.csv"
-        file_path = dir_path_data / file_name
-        df = pd.read_csv(file_path, delimiter=",")
-
-        # Remove rows with missing data
-        df.dropna(axis=0, inplace=True)
-
-        # Convert the 'peak' and 'trough' columns to datetime
-        df["peak"] = pd.to_datetime(df["peak"])
-        df["trough"] = pd.to_datetime(df["trough"])
+        df = self._load_peak_trough_data()
 
         # Calculate duration of each recession
         df["duration"] = (df["trough"] - df["peak"]).dt.days
@@ -1333,7 +1376,7 @@ class PostProcess:
         """Compare the spread/mean for the recession duration of our model and the data
         """
         # Get model and data
-        time, duration = self._load_recession_results() # _recession_time_between_and_duration(plot=False, **peak_kwargs)
+        time, duration, _, _ = self._load_recession_results() # _recession_time_between_and_duration(plot=False, **peak_kwargs)
         time_NBER, duration_NBER = self._load_recession_data()
         
         # Calculate spread / mean
@@ -1358,7 +1401,7 @@ class PostProcess:
     def time_scale_of_the_system(self):
         """Compare timescales in model and data (recession time, duration, company lifespan)."""
         # Load data
-        tb_model, dur_model = self._load_recession_results()
+        tb_model, dur_model, _, _ = self._load_recession_results()
         tb_data, dur_data = self._load_recession_data()
         life_model = self._get_lifespan()
         life_data_x, life_data_logy = self._load_lifespan_data()
@@ -1431,7 +1474,7 @@ class PostProcess:
         return series
     
 
-    def _load_inflation_data(self, source="CPI", start="1959-01-01", end="2025-03-01", freq="ME", change_type="log"):
+    def _load_inflation_data(self, source="CPI", start="1959-01-01", end="2025-03-01", freq="ME", change_type="log", annualized=False):
         """
         Download CPI or PCE data from FRED via yfinance and calculate inflation.
 
@@ -1441,6 +1484,7 @@ class PostProcess:
             end (str): End date in "YYYY-MM-DD" format.
             freq (str): Frequency for resampling: "M" (monthly), "Q" (quarterly), etc.
             change_type (str): "log" for log returns, "percent" for percentage change.
+            annualized (bool): Whether to annualize the inflation rate.
 
         Returns:
             pd.DataFrame: DataFrame with the price index and computed inflation.
@@ -1463,17 +1507,31 @@ class PostProcess:
         except FileNotFoundError:
             print(f"File {name} not found. Downloading data now")
             series = self._save_inflation_data(source, start, end)
-            
+
         series.name = source.upper()
         series = series.resample(freq).mean()  # Take NaNs into account
 
+        # Determine periods per year
+        freq_letter = freq[0].upper()
+        periods_per_year = {"A": 1, "Y": 1, "Q": 4, "M": 12}.get(freq_letter, 12)
+
         # Compute inflation
         if change_type.lower() == "log":
-            inflation = np.log(series / series.shift(1))
-            inflation.name = "log_inflation"
+            raw = np.log(series / series.shift(1))
+            if annualized:
+                inflation = raw * periods_per_year
+                inflation.name = "annual_log_inflation"
+            else:
+                inflation = raw
+                inflation.name = "log_inflation"
         else:
-            inflation = (series / series.shift(1) - 1) * 100
-            inflation.name = "percent_inflation"
+            raw = (series / series.shift(1) - 1) * 100
+            if annualized:
+                inflation = ((series / series.shift(1)) ** periods_per_year - 1) * 100
+                inflation.name = "annual_percent_inflation"
+            else:
+                inflation = raw
+                inflation.name = "percent_inflation"
 
         return series, inflation.dropna()
 
@@ -1497,7 +1555,7 @@ class PostProcess:
             
         # Compute inflation
         if change_type.lower() == "log":
-            inflation = np.log(variable[1:] / variable[:-1])
+            inflation = np.log10(variable[1:] / variable[:-1])
         elif change_type.lower() == "percent":
             inflation = (variable[1:] / variable[:-1] - 1) * 100    
         else:

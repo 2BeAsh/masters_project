@@ -19,7 +19,8 @@ from run import dir_path_image
 from postprocess import PostProcess
 # Other
 import functools
-
+from tabulate import tabulate
+from tqdm import tqdm
 
 
 class PlotMaster(general_functions.PlotMethods, PostProcess):
@@ -110,12 +111,12 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
 
         # Mean and median salary
         # ax0.plot(time_values, mean_salary, label="Mean salary", c=c0, alpha=1)
-        ax0.plot(time_values, mu, label=r"$\mu/W$", c=self.colours["mu"])
+        ax0.plot(time_values, mu, label=r"$P/W$", c=self.colours["mu"])
         # ax0.plot(time_values, median_salary, label="Median salary", c="black", alpha=0.7, ls="dotted")
         if xlim is None: xlim = self.xlim
         ax0.set(xlim=xlim, xlabel="Time [a.u.]", yscale=yscale, )#title="Mean salary and bankruptcies")
-        if yscale == "linear": ylabel = r"$\mu / W$" 
-        else: ylabel = r"Log $\mu / W$"
+        if yscale == "linear": ylabel = r"$P / W$" 
+        else: ylabel = r"Log $P / W$"
         ax0.set_ylabel(ylabel, color=c0)
         ax0.tick_params(axis='y', labelcolor=c0)
         ax0.grid()
@@ -125,7 +126,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             # ax1 - profit
             mean_s = np.mean(s, axis=0)  # Average over company
             ax1.plot(time_values, mu - mean_s, c=self.colours["mu"])
-            ax1.set(xlabel="Time [a.u.]", xlim=self.xlim, ylabel=r"$\mu / W - \bar{s}$")
+            ax1.set(xlabel="Time [a.u.]", xlim=self.xlim, ylabel=r"$P / W - \bar{s}$")
             ax0.set(xlabel="")
             ax1.grid()
             if yscale == "log":
@@ -138,9 +139,9 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
                 for peak in self.peak_idx:
                     ax0.axvline(x=peak, ls="--", c="grey", alpha=0.7)
                     ax1.axvline(x=peak, ls="--", c="grey", alpha=0.7)
-        
+            self._subplot_label(ax1, 1)
+
         self._subplot_label(ax0, 0)
-        self._subplot_label(ax1, 1)
         
         self._text_save_show(fig, ax0, "salary", xtext=0.05, ytext=0.95, fontsize=6)
         
@@ -161,18 +162,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # ax_s - salary
         ylim = (0.99e-2, np.max(s)*1.01)
-        ax_s.plot(time_values, s.T)
-        ax_s.set(title=f"Salary and debt of first {N_plot} companies", yscale="linear", ylim=ylim)
-        ax_s.set_ylabel("Salary")
-        # ax_s.tick_params(axis='y', labelcolor=c0)
+        ax_s.plot(time_values, s.T, color=self.colours["salary"])
+        # ax_s.set(title=f"Salary and debt of first {N_plot} companies", yscale="linear", ylim=ylim)
+        ax_s.set(yscale="linear", ylim=ylim, ylabel="Wage [$]")
         ax_s.grid()
         
         # ax_d - debt
-        # ax_d = ax_s.twinx()
-        ax_d.plot(time_values, C.T,)
-        ax_d.set(xlabel="Time", ylabel="Log Capital", yscale="linear")
-        ax_d.set_ylabel("Capital")
-        # ax_d.tick_params(axis='y', labelcolor=c1)
+        ax_d.plot(time_values, C.T, c=self.colours["capital"])
+        ax_d.set(ylabel="Capital [$]", yscale="linear")
         ax_d.grid()
 
         # Plot bankruptcies for the first company on the debt subplot
@@ -184,9 +181,19 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax_s.scatter(time_bankrupt, s_bankrupt, c=self.colours["bankruptcy"], marker="x", s=20)
 
         # ax_w - workers
-        ax_w.plot(time_values, w.T)
-        ax_w.set(xlabel="Time", ylabel="Log Count", title="Workers", yscale="log")
+        ax_w.plot(time_values, w.T, c=self.colours["workers"])
+        ax_w.set(xlabel="Time", ylabel="Workers", yscale="linear")
         ax_w.grid()
+        
+        # Ticks
+        x_ticks = [2100, 2200, 2300, 2400, 2500]
+        x_labels = x_ticks[::2]
+        for i, axis in enumerate((ax_s, ax_d, ax_w)):
+            self._axis_ticks_and_labels(axis, x_ticks=x_ticks, x_labels=x_labels, x_dtype="int")
+            self._subplot_label(axis, i)
+            
+        
+        # Subplot labels
         
         self._text_save_show(fig, ax_s, "single_companies", xtext=0.05, ytext=0.85)
         
@@ -234,7 +241,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax1_twin = ax1.twinx()
         ax1_twin.set(xlim=self.xlim)
         ax1_twin.plot(time_values, mean_salary, c=c2, alpha=0.7)
-        ax1_twin.set_ylabel(r"$\mu / W$", color=c2)
+        ax1_twin.set_ylabel(r"$P / W$", color=c2)
         ax1_twin.tick_params(axis='y', labelcolor=c2)
         ax1_twin.set_yscale("linear")
         
@@ -260,9 +267,9 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # Create figure
         fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(time_values, mu/self.W - s.mean(axis=0), c=self.colours["mu"], label=r"$\mu / W - \hat{s}$", alpha=0.9)
+        ax.plot(time_values, mu/self.W - s.mean(axis=0), c=self.colours["mu"], label=r"$P / W - \hat{s}$", alpha=0.9)
         ax.tick_params(axis='y', labelcolor=self.colours["mu"])
-        ax.set_ylabel(r"$\mu / W - \hat{s}$", color=self.colours["mu"])
+        ax.set_ylabel(r"$P / W - \hat{s}$", color=self.colours["mu"])
         ax.set(xlabel="Time", )
         ax.grid()
         
@@ -398,7 +405,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
                 # x_text = time_values[0] - 25
                 # ax_ts.text(x_text, y_text, s=text_full, fontsize=10, rotation=25)
 
-            ax_ts.set(xlabel="Time [a.u.]", ylabel=r"Normalized Average Price $\mu/W$", yscale="linear")
+            ax_ts.set(xlabel="Time [a.u.]", ylabel=r"Normalized Average Price $P/W$", yscale="linear")
             ax_ts.grid()
             ax_ts.legend(frameon=False)
             # Extremum
@@ -1064,7 +1071,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             
 
 
-    def plot_var_frequency(self, group_name_arr: list, var_name: str, data_name: str, points_to_exclude_from_fit=0, show_second_dominant_freq=False, show_fit_results=False):
+    def plot_var_frequency(self, group_name_arr, var_name: str, data_name: str, points_to_exclude_from_fit=0, show_second_dominant_freq=False, show_fit_results=False):
         """Use the PSD to find the frequency of the oscillation in the data set for different var_name values.
 
         Args:
@@ -1551,7 +1558,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # Get data
         self._get_data(self.group_name)
         s = self.s[:, -1]
-        d = self.d[:, -1]
+        d = -self.d[:, -1]
         s_mean = np.mean(s)
         s_median = np.median(s)
         # Bins
@@ -1563,9 +1570,9 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax_d.hist(d, bins=Nbins, color=self.colours["debt"])
         
         ax_s.set(xlabel="Salary", ylabel="Counts", yscale="log")
-        ax_d.set(xlabel="Debt", yscale="log", ylabel="Counts")
+        ax_d.set(xlabel="Capital", yscale="log", ylabel="Counts")
         ax_s.set_title("Salary distribution", fontsize=8)
-        ax_d.set_title("Debt distribution", fontsize=8)
+        ax_d.set_title("Capital distribution", fontsize=8)
         ax_s.grid() 
         ax_d.grid()
         self._add_legend(ax_s, ncols=2, fontsize=8)
@@ -1613,7 +1620,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         # For the outer row and column, add x and y labels
         for ax in axs[-1]:
-            ax.set_xlabel(r"Log $s_b - \mu$")
+            ax.set_xlabel(r"Log $s_b - P$")
         for ax in axs[:, 0]:
             ax.set_ylabel("Counts")
             
@@ -1914,7 +1921,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         label_fontsize = 15
         ticks_fontsize = 10
         im = ax.imshow(KDE_prob, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(s_eval), np.max(s_eval)], cmap="hot")
-        if show_mean: ax.plot(time_values, mu/self.W, c="magenta", label=r"$\mu / W$", alpha=1, lw=1)
+        if show_mean: ax.plot(time_values, mu/self.W, c="magenta", label=r"$P / W$", alpha=1, lw=1)
         ax.set_xlabel("Time", fontsize=label_fontsize)
         ax.set_ylabel("Salary", fontsize=label_fontsize)
         ax.tick_params(axis='both', which='major', labelsize=ticks_fontsize)
@@ -2187,7 +2194,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax.grid()
         ax.legend(frameon=False)
 
-        ax_mu.plot(time_values, mu/self.W, label=r"$\mu / W$", alpha=1)
+        ax_mu.plot(time_values, mu/self.W, label=r"$P / W$", alpha=1)
         ax_mu.set(ylabel="Log Price [a.u.]", yscale="log")
         ax.grid()
         ax.legend(frameon=False)
@@ -2340,7 +2347,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
                         extent=[self.skip_values, self.time_steps, np.min(s_eval_arr[index]), np.max(s_eval_arr[index])],
                         cmap="hot", vmin=min_val, vmax=max_val)
             if show_mean:
-                ax.plot(time_values, mu_arr[index] / self.W, c="magenta", label=r"$\mu / W$", alpha=1, lw=0.6)
+                ax.plot(time_values, mu_arr[index] / self.W, c="magenta", label=r"$P / W$", alpha=1, lw=0.6)
 
             # Axis and ticks
             self._axis_ticks_and_labels(ax, x_ticks, y_ticks, x_tick_labels, y_tick_labels, x_dtype="int")
@@ -2591,7 +2598,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
                         extent=[self.skip_values, self.time_steps, np.min(s_eval_arr[index]), np.max(s_eval_arr[index])],
                         cmap="hot", vmin=min_val, vmax=max_val)
             if show_mean:
-                ax.plot(time_values, mu_arr[index] / W_arr[index], c="magenta", label=r"$\mu / W$", alpha=1, lw=0.6)
+                ax.plot(time_values, mu_arr[index] / W_arr[index], c="magenta", label=r"$P / W$", alpha=1, lw=0.6)
             ax.tick_params(axis='both', which='major')
 
             # Title
@@ -2691,15 +2698,15 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             twinx.tick_params(axis='y', labelcolor=self.colours["debt"])
             twinx.set_ylabel("Capital", color=self.colours["debt"])
 
-            ax_time.plot(time_values, mu / self.W, label=r"$\mu/W$", c=self.colours["mu"])
-            ax_time.set(xlabel="Time", ylabel="Price", title=r"Mean capital and $\mu$")
+            ax_time.plot(time_values, mu / self.W, label=r"$P/W$", c=self.colours["mu"])
+            ax_time.set(xlabel="Time", ylabel="Price", title=r"Mean capital and $P$")
             ax_time.grid()
             ax_time.tick_params(axis="y", labelcolor=self.colours["mu"])    
-            ax_time.set_ylabel(r"$\mu/W$", color=self.colours["mu"])
+            ax_time.set_ylabel(r"$P/W$", color=self.colours["mu"])
 
         if show_distributions:        
             # Return distributions
-            ax_return.hist(bins[:-1], bins, weights=counts_mu, color=self.colours["mu"], label=r"$\mu$", alpha=0.95, density=True)
+            ax_return.hist(bins[:-1], bins, weights=counts_mu, color=self.colours["mu"], label=r"$P$", alpha=0.95, density=True)
             ax_return.hist(bins[:-1], bins, weights=counts_capital_individual, color=self.colours["capital"], label=r"Individual $C$", alpha=0.8, density=True)
             ax_return.hist(bins[:-1], bins, weights=counts_capital_sum, color=self.colours["debt"], label=r"Mean $C$", alpha=0.6, density=True)
             ax_return.set(xlabel="Return", ylabel=f"Prob. Density", title="Return distributions", yscale="log")
@@ -2752,7 +2759,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax_aggr, ax_indi = axs
         
         # ax_aggr: Aggregate distributions (mu, mu mean, mu individual mean)
-        ax_aggr.hist(bins[:-1], bins, weights=counts_mu, color=self.colours["mu"], label=r"$\mu$", alpha=0.95, density=True)
+        ax_aggr.hist(bins[:-1], bins, weights=counts_mu, color=self.colours["mu"], label=r"$P$", alpha=0.95, density=True)
         ax_aggr.hist(bins[:-1], bins, weights=counts_capital_individual, color=self.colours["capital"], label=r"Mean Individual $C$", alpha=0.8, density=True)
         ax_aggr.hist(bins[:-1], bins, weights=counts_capital_sum, color=self.colours["debt"], label=r"Mean $C$", alpha=0.6, density=True)
         ax_aggr.set(ylabel=f"Prob. Density", yscale="log", ylim=ylim, title="Distribution of Aggregate changes")
@@ -2922,18 +2929,18 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         s_eval, KDE_prob = self.running_KDE("salary", bandwidth_s, eval_points, kernel, s_lim)  # KDE probabilities
         C_eval, KDE_prob_C = self.running_KDE("capital", bandwidth_C, eval_points, kernel, C_lim)  # KDE probabilities
         time, diversity = self._worker_diversity()
-        s, mu = self._skip_values(self.s, self.mu)
+        s, mu, C = self._skip_values(self.s, self.mu, -self.d)
         mean_diff = mu / self.W - s.mean(axis=0)    
 
         # Create figure
-        fig, (ax, ax_C, ax_div) = plt.subplots(figsize=(10, 10), nrows=3, gridspec_kw={'height_ratios': [2, 1, 1]})
+        fig, (ax, ax_C, ax_means, ax_div) = plt.subplots(figsize=(10, 10), nrows=4, gridspec_kw={'height_ratios': [2, 1, 1, 1]}, sharex=True)
         label_fontsize = 20
         ticks_fontsize = 12.5
         
         # Wage
         im = ax.imshow(KDE_prob, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(s_eval), np.max(s_eval)], cmap="hot")
         if show_mean: ax.plot(time, mu/self.W, c="magenta", lw=0.6)
-        ax.set_ylabel("Wage", fontsize=label_fontsize)
+        ax.set_ylabel("Wage [$]", fontsize=label_fontsize)
         ax.tick_params(axis='both', which='major', labelsize=ticks_fontsize)            
         ax.set_xticks([])
         # Add colorbar
@@ -2957,7 +2964,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         KDE_prob_C = np.clip(KDE_prob_C, 0, np.percentile(KDE_prob_C, percentile_cut))
         
         im_C = ax_C.imshow(KDE_prob_C, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(C_eval), np.max(C_eval)], cmap=C_cmap)
-        ax_C.set_ylabel("Capital", fontsize=label_fontsize)
+        ax_C.set_ylabel("Capital [$]", fontsize=label_fontsize)
         
         # Add colorbar
         cbar_C = fig.colorbar(im_C, ax=ax_C, ticks=[], pad=-0.1, aspect=15)
@@ -2968,13 +2975,24 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         self._axis_ticks_and_labels(ax_C, x_ticks=time_ticks, y_ticks=C_ticks, x_labels=time_ticklabels, y_labels=C_ticklabels)
         ax_C.set_xticklabels([])
         
+        # Mean wage and capital
+        twin_C = ax_means.twinx()
+        twin_C.plot(time, C.mean(axis=0), c=self.colours["capital"])
+        twin_C.set(xlim=self.xlim)
+        twin_C.set_ylabel(r"$\bar{C}(t)$ [\$]", fontsize=label_fontsize, color=self.colours["capital"])
+        twin_C.tick_params(axis="y", which="both", labelsize=ticks_fontsize, labelcolor=self.colours["capital"])
+        
+        ax_means.plot(time, mu/self.W, color=self.colours["mu"])
+        ax_means.set_ylabel(r"$P / W$", fontsize=label_fontsize, color=self.colours["mu"])
+        ax_means.tick_params(axis="y", which="both", labelsize=ticks_fontsize, labelcolor=self.colours["mu"])
+        ax_means.grid()
+        
         # Diversity and mean diff
         # Diversity
         twinx = ax_div.twinx()
         twinx.plot(time, diversity, c=self.colours["diversity"])
         twinx.set(xlim=self.xlim, ylim=(0, self.N))
-        twinx.set_xlabel("Time", fontsize=label_fontsize)
-        twinx.set_ylabel("Wage diversity", fontsize=label_fontsize, color=self.colours["diversity"])
+        twinx.set_ylabel("Company diversity", fontsize=label_fontsize, color=self.colours["diversity"])
         twinx.tick_params(axis='y', which='major', labelsize=ticks_fontsize, labelcolor=self.colours["diversity"])
         # Ticks
         div_ticks = np.linspace(0, self.N, 5)
@@ -2986,9 +3004,10 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         mean_ticks = np.round(np.linspace(0, mean_diff.max(), 5), 2)
         mean_ticklabels = mean_ticks[::2]
 
-        ax_div.plot(time, mean_diff, c=self.colours["mu"], label=r"$\mu / W - \bar{s}$", alpha=0.9)
+        ax_div.plot(time, mean_diff, c=self.colours["mu"], label=r"$P / W - \bar{s}$", alpha=0.9)
         ax_div.grid()
-        ax_div.set_ylabel(r"$\mu / W - \bar{s}$", color=self.colours["mu"], fontsize=label_fontsize)
+        ax_div.set_ylabel(r"$P / W - \bar{s} $ [\$]", color=self.colours["mu"], fontsize=label_fontsize)
+        ax_div.set_xlabel("Time [a.u.]", fontsize=label_fontsize)
         ax_div.set(xlim=self.xlim, ylim=(None, mean_ticks[-1]*1.1))
         ax_div.tick_params(axis='y', labelcolor=self.colours["mu"], labelsize=ticks_fontsize)
         # Ticks
@@ -2996,14 +3015,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax_div.tick_params(axis='y', labelcolor=self.colours["mu"], colors=self.colours["mu"], which="both")
 
         # Subplot labels
-        axis_all = (ax, ax_C, ax_div)
-        outline_color_list = ["black", "black", None]
-        color_list = ["white", "white", "black"]
+        axis_all = (ax, ax_C, ax_means, ax_div)
+        outline_color_list = ["black", "black", None, None]
+        color_list = ["white", "white", "black", "black"]
         for i, axis in enumerate(axis_all):
-            self._subplot_label(axis, i, fontsize=16, outline_color=outline_color_list[i], color=color_list[i])
+            self._subplot_label(axis, i, fontsize=18, outline_color=outline_color_list[i], color=color_list[i])
         
         # Text, save, show
-        self._text_save_show(fig, ax, "KDE_and_diversity", xtext=0.05, ytext=0.95, fontsize=0)
+        self._text_save_show(fig, ax, "wage_capital_density_average_income", xtext=0.05, ytext=0.95, fontsize=0)
         
         
         
@@ -3121,7 +3140,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             # Add y axis labels if first column, remove y tick labels from second column
             is_first_column = i % 2 == 0
             if is_first_column:
-                ax_KDE.set_ylabel("Wage")
+                ax_KDE.set_ylabel("Wage [$]")
             else:
                 ax_KDE.set_yticklabels([])
             # Remove all x ticks labels
@@ -3131,14 +3150,14 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             
             # Diversity and mean salary difference
             # Mean salary difference
-            ax_div.plot(time, s_diff, c=self.colours["mu"], label=r"$\mu / W - \hat{s}$", alpha=0.9)
+            ax_div.plot(time, s_diff, c=self.colours["mu"], label=r"$P / W - \hat{s}$ [\$]", alpha=0.9)
             ax_div.set(xlim=self.xlim, ylim=(means_min, means_max))
             ax_div.grid(which='both')
             self._axis_ticks_and_labels(ax_div, x_ticks=time_ticks, y_ticks=div_means_ticks, x_labels=time_labels, y_labels=div_means_labels, x_dtype="int")
 
             # Add y axis labels, remove y tick labels form second column
             if is_first_column:
-                ax_div.set_ylabel(r"$\mu / W - \hat{s}$", color=self.colours["mu"])
+                ax_div.set_ylabel(r"$P / W - \hat{s}$ [\$]", color=self.colours["mu"])
             else:
                 ax_div.set_yticklabels([])
                 
@@ -3149,7 +3168,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
 
             # Diversity on twin axis
             twinx = ax_div.twinx()
-            twinx.plot(time, diversity, label="Diversity", c=self.colours["diversity"], alpha=0.7)
+            twinx.plot(time, diversity, label="Company diversity", c=self.colours["diversity"], alpha=0.7)
             twinx.set(ylim=(0, N))  
             # Ticks
             div_y_ticks = np.linspace(0, N, 5)
@@ -3160,7 +3179,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
             twinx.tick_params(axis="both", width=tick_width_minor, length=tick_length_minor, which="minor")
             # Add y axis labels if second column, remove y tick labels from first row
             if not is_first_column:
-                twinx.set_ylabel("Wage diversity", color=self.colours["diversity"])
+                twinx.set_ylabel("Company diversity", color=self.colours["diversity"])
             else:
                 twinx.set_yticklabels([])
                 
@@ -3183,13 +3202,13 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax40.plot(time_minus_1, increased_40, "-", color=c_increase, alpha=0.7, label=r"$\Delta C_k > 0$")
         ax40.plot(time_minus_1, decreased_40, "-", color=c_decrease, alpha=0.7, label=r"$\Delta C_k < 0$")
         ax40.plot(time_minus_1, zero_workers_40, "-", color=c_w0, alpha=0.7, label=r"$w=0$")
-        ax40.set(xlabel="Time", ylabel="Fraction", xlim=self.xlim, ylim=y_lim_increase_decrease)
+        ax40.set(xlabel="Time [a.u.]", ylabel="Fraction", xlim=self.xlim, ylim=y_lim_increase_decrease)
         ax40.grid()        
         
         ax41.plot(time_minus_1, increased_41, "-", color=c_increase, alpha=0.7)
         ax41.plot(time_minus_1, decreased_41, "-", color=c_decrease, alpha=0.7)
         ax41.plot(time_minus_1, zero_workers_41, "-", color=c_w0, alpha=0.7)
-        ax41.set(xlabel="Time", xlim=self.xlim, ylim=y_lim_increase_decrease)
+        ax41.set(xlabel="Time [a.u.]", xlim=self.xlim, ylim=y_lim_increase_decrease)
         ax41.grid()
         
         # Ticks for increase decrease
@@ -3218,7 +3237,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # cbar.set_label(label="Frequency", fontsize=15)
         
         # Text save show
-        self._text_save_show(fig, ax00, "KDE_diversity_multiple_and_time_scale", xtext=0.05, ytext=0.95, fontsize=0)
+        self._text_save_show(fig, ax00, "parameters", xtext=0.05, ytext=0.95, fontsize=0)
         
         
     def plot_worker_distribution(self, Nbins=None, xlim=None, ylim=(1e-5, 2e0), x_ticks=None, bars_or_points="bars", p0=(1.059, 1), w_lim_fit=(None, None)):
@@ -3431,7 +3450,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         fig, ax = plt.subplots(figsize=(10, 5))
         ax.plot(mu, bankrupt, ".", alpha=0.8, markersize=2)
-        ax.set(xlabel=r"$\mu$", ylabel="Fraction bankrupt", title=title)
+        ax.set(xlabel=r"$P$", ylabel="Fraction bankrupt", title=title)
         ax.grid()
         
         self._text_save_show(fig, ax, "mu_bankruptcy_correlation", xtext=0.05, ytext=0.85, fontsize=4)
@@ -3479,10 +3498,10 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         for ax in ax_flat:
             ax.grid()
             ax.set(xlim=self.xlim)
-        ax_mu.set(title=r"$\mu / W$", ylabel="Price")
+        ax_mu.set(title=r"$P / W$", ylabel="Price")
         ax_C_diff.set(title=r"$N_{\Delta C > 0} - N_{\Delta C < 0}$", ylabel="Companies")
         ax_w0.set(title=r"$N_{w=0}$", ylabel="Companies")
-        ax_profit.set(title=r"$\mu / W - \hat{s}$", ylabel="Price")
+        ax_profit.set(title=r"$P / W - \hat{s}$", ylabel="Price")
         
         fig.suptitle(f"Window size = {window_size}", fontsize=10)
 
@@ -3608,7 +3627,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
                               Nbins_asset_return=None, ylim_asset_return=None, ylim_asset_return_data=None, Nbins_asset_return_data=None,
                               ylim_lifespan=None, bin_width_lifespan=1, Nbins_recession=None, Nbins_NBER_time=15, Nbins_NBER_duration=12, 
                               Nbins_size=None, xlim_size=None, ylim_size=None, SP500_change_days=10,
-                              inflation_change_type="log", window_size_inflation=10, window_size_second_inflation=10, inflation_time_values=1000):
+                              inflation_change_type="log", window_size_inflation=10, window_size_second_inflation=20, inflation_time_values=1000):
         """In the first coloumn, plot model results and in the second plot data.
         Plot:
             0. Asset return
@@ -3623,27 +3642,39 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # Asset return
         asset_return = self._asset_return("capital_individual_all", time_period=1)
         asset_return_SP500 = self._load_sp500_asset_return(SP500_change_days) 
+        
         # Company lifespan
         lifespan = self._get_lifespan()
         lifespan_data_x, lifespan_data_logy = self._load_lifespan_data()
+        
         # Recession duration and time between
         try: 
-            time_between_recessions, recession_duration = self._load_recession_results()
+            time_between_recessions, recession_duration, troughs_model, peaks_model = self._load_recession_results()
         except FileNotFoundError:
             print("No recession results found, generating results now")
             self._save_recession_results(**recession_parameters)
-            time_between_recessions, recession_duration = self._load_recession_results()
+            time_between_recessions, recession_duration, troughs_model, peaks_model = self._load_recession_results()
+        troughs_model = troughs_model[troughs_model < inflation_time_values]
+        peaks_model = peaks_model[peaks_model < inflation_time_values]
+        troughs_model += self.skip_values
+        peaks_model += self.skip_values
         # Get NBER recession data data
         (time_between_NBER, duration_NBER), (time_between_NBER_PW, duration_NBER_PW) = self._load_recession_data(separate_post_war=True)
+        df_recession_data = self._load_peak_trough_data()
+        troughs_NBER = df_recession_data["trough"]
+        peaks_NBER = df_recession_data["peak"]
+        
         # Company size        
         w, time_for_inflation = self._skip_values(self.w, self.time_values[:self.skip_values+inflation_time_values])
         w = w[w > 0]
         # Company size data
         labels_size_data, counts_size_data = self._prepare_firm_size_pmf(normalize=True)
-        # Inflation data
+        
+        # Inflation
         _, mu_smooth_inflation = self._get_inflation(change_type=inflation_change_type, window_size=window_size_inflation)
         mu_smooth_inflation = uniform_filter1d(mu_smooth_inflation, size=window_size_second_inflation)
-        _, PCE_inflation = self._load_inflation_data(source="PCE", change_type=inflation_change_type)
+        _, PCE_inflation = self._load_inflation_data(source="PCE", change_type=inflation_change_type, annualized=False)
+        
         # Create figure and unpack axes
         fig, ax_arr = plt.subplots(figsize=(10, 10), ncols=2, nrows=6, gridspec_kw={'hspace': 0.15})
         ax_asset = ax_arr[0, :]
@@ -3664,7 +3695,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         asset_return_x_ticklabels = asset_return_x_ticks[::2]  # {-3: "-3%", 0: "0%", 3: "3%"}
         ax_asset[0].hist(asset_return, bins=Nbins_asset_return, color=self.colours["capital"], density=True, label="Model results")
         ax_asset[0].plot(x_gauss, gauss, c="black", label="Gaussian", alpha=0.8)
-        ax_asset[0].set(xlabel="Log return", ylabel="PDF", ylim=ylim_asset_return, yscale="log", xlim=(-3.5, 3.5))
+        ax_asset[0].set(xlabel="Ln return", ylabel="PDF", ylim=ylim_asset_return, yscale="log", xlim=(-3.5, 3.5))
         ax_asset[0].grid()
         ax_asset[0].legend(frameon=False, loc="upper right")
         self._axis_ticks_and_labels(ax_asset[0], x_ticks=asset_return_x_ticks, x_labels=asset_return_x_ticklabels)
@@ -3675,7 +3706,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         if Nbins_asset_return_data is None: Nbins_asset_return_data = int(np.sqrt(len(asset_return_SP500)))
         ax_asset[1].hist(asset_return_SP500, bins=Nbins_asset_return_data, color=self.colours["capital"], density=True, label="S&P 500 Data")
         ax_asset[1].plot(x_gauss, gauss_data, c="black", label="Gaussian", alpha=0.8)
-        ax_asset[1].set(xlabel="Log return", ylim=ylim_asset_return_data, yscale="log", ylabel="PDF", xlim=(-2.05, 2.05))
+        ax_asset[1].set(xlabel="Ln return", ylim=ylim_asset_return_data, yscale="log", ylabel="PDF", xlim=(-2.05, 2.05))
         ax_asset[1].grid()
         ax_asset[1].legend(frameon=False, loc="upper right")
         asset_return_data_x_ticks = [-2., -1.25, 0, 1.25, 2.] 
@@ -3696,9 +3727,24 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         
         if ylim_lifespan is None: ylim_lifespan = (4e-7, 8e-2)
         bins_life_span = np.arange(1, time_max, bin_width_lifespan)
-        ax_lifespan[0].hist(lifespan, bins=bins_life_span, color=self.colours["time"], density=True)
+        lifespan_counts, lifespan_edges = np.histogram(lifespan, bins=bins_life_span, density=True)
+        ax_lifespan[0].hist(lifespan_edges[:-1], lifespan_edges, weights=lifespan_counts, color=self.colours["time"])
         ax_lifespan[0].set(xlabel="Company Lifespan [a.u.]", ylabel="PMF", yscale="log", ylim=ylim_lifespan, xlim=xlim_time)
         ax_lifespan[0].grid()
+        # Create insert in the top right corner that shows the first values
+        axins = inset_axes(ax_lifespan[0], "30%", "30%", loc="upper right")
+        axins.hist(lifespan, bins=bins_life_span, color=self.colours["time"], density=True)
+        insert_xlim = (2, 14)
+        insert_y_possible = lifespan_counts[0 : insert_xlim[1]]
+        insert_ylim = (insert_y_possible[insert_y_possible>0].min()*0.9, insert_y_possible.max()*1.1)
+        axins.set_xlim(*insert_xlim)
+        axins.set_ylim(*insert_ylim)
+        axins.set(yscale="log", yticks=[])
+        axins.set_xticks([2, 8, 14], [2, 8, 14], fontsize=6)
+        axins.tick_params(axis="y", which="both", left=False, right=False, labelleft=False)
+        mark_inset(ax_lifespan[0], axins, loc1=2, loc2=3, fc="none", ec="0.5")
+        
+        # Ticks
         x_ticks_time = np.linspace(xlim_time[0], xlim_time[1], 5)
         x_ticklabels_time = x_ticks_time[::2]
         self._axis_ticks_and_labels(ax_lifespan[0], x_ticks=x_ticks_time, x_labels=x_ticklabels_time, x_dtype="int")
@@ -3828,25 +3874,36 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         ax_inflation[0].plot(time_for_inflation, mu_smooth_inflation, "-", color=self.colours["mu"], lw=1)
         ax_inflation[1].plot(PCE_inflation, "-", color=self.colours["mu"])
         
+        # Plot the recessions in a shaded gray
+        for start, end in zip(peaks_model, troughs_model):
+            ax_inflation[0].axvspan(start, end, color="gray", alpha=0.3)
+        for start, end in zip(peaks_NBER, troughs_NBER):
+            ax_inflation[1].axvspan(start, end, color="gray", alpha=0.3)
+        xlim_inflation_data = (PCE_inflation.index[0], PCE_inflation.index[-1])
         # Axis setup
         if inflation_change_type == "log":
             ylabel_change = "Log Change"
+            ylabel_change_data = ylabel_change
         else:
-            ylabel_change = "Percent Change"
+            ylabel_change = r" $\Delta \bar{s}_\text{real} / \bar{s}_\text{real}$"
+            ylabel_change_data = "Inflation"
         
         inflation_min = 1.02 * np.min((mu_smooth_inflation.min(), PCE_inflation.min().item()))
         inflation_max = 1.02 * np.max((mu_smooth_inflation.max(), PCE_inflation.max().item()))
         ylim_inflation = (inflation_min, inflation_max)
-        ax_inflation[0].set(ylabel=ylabel_change, ylim=ylim_inflation)
-        ax_inflation[1].set(ylabel=ylabel_change, xlabel="Date",)# ylim=ylim_inflation)
+        ax_inflation[0].set(ylabel=ylabel_change, ylim=ylim_inflation, xlabel="Time [a.u.]")
+        ax_inflation[1].set(ylabel=ylabel_change_data, xlabel="Date", xlim=xlim_inflation_data)# ylim=ylim_inflation)
         # Grid
         ax_inflation[0].grid()
         ax_inflation[1].grid()
         # Set ticks for model
         xticks_inflation = np.linspace(time_for_inflation[0], time_for_inflation[-1]+1, 5)  # Time for inflation is one smaller due to diff, but that makes ticks ugly
         xticklabels_inflation = xticks_inflation[::2]
-        yticks_inflation = [-0.01, 0, 0.01]
-        yticklabels_inflation = yticks_inflation
+        yticks_inflation = [-1,  0, 1]
+
+        yticklabels_inflation = {-1: "-1%", 0: "0%", 1: "1%"}
+        if inflation_change_type == "log":
+            yticklabels_inflation = yticks_inflation[::2]
         self._axis_ticks_and_labels(ax_inflation[0], x_ticks=xticks_inflation, x_labels=xticklabels_inflation, x_dtype="int",
                                     y_ticks=yticks_inflation, y_labels=yticklabels_inflation)
         # Extract start and end year
@@ -3859,7 +3916,7 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         tick_labels = [str(start_year), str(middle_year), str(end_year)]
         # Set ticks for data
         ax_inflation[1].set_xticks(tick_positions)
-        ax_inflation[1].set_xticklabels(tick_labels)        
+        ax_inflation[1].set_xticklabels(tick_labels) 
         self._axis_ticks_and_labels(ax_inflation[1], y_ticks=yticks_inflation, y_labels=yticklabels_inflation)
         
         # Add subplot labels
@@ -3928,8 +3985,8 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         # ax_peak_relaxed.legend(frameon=False, loc="upper right")
         
         # Axis setup
-        ax_peak_picky.set(ylabel=r"Smoothed $\mu$ [a.u.]")
-        ax_peak_relaxed.set(ylabel=r"Smoothed $\mu$ [a.u.]", xlabel="Time [a.u.]")
+        ax_peak_picky.set(ylabel=r"Smoothed $P$ [a.u.]")
+        ax_peak_relaxed.set(ylabel=r"Smoothed $P$ [a.u.]", xlabel="Time [a.u.]")
         ax_dur_picky.set(ylabel="Counts")
         ax_dur_relaxed.set(ylabel="Counts", xlabel="Recession duration [a.u.]")
         ax_peak_picky.grid()
@@ -3941,59 +3998,62 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         self._text_save_show(fig, ax_arr[0, 0], f"peak_hyperpar_comparison", xtext=0.05, ytext=0.85, fontsize=1)
 
 
-    def plot_inflation_comparison(self, change_type="log", window_size=10, window_size_inflation=5):
+    def plot_inflation_comparison(self, peak_kwargs, change_type="log", window_size=10, window_size_inflation=5, annualized=True, same_ylim=False):
         # Get data
-        mu_smooth, mu_smooth_inflation = self._get_inflation(change_type=change_type, window_size=window_size)
-        mu_smooth_inflation = uniform_filter1d(mu_smooth_inflation, size=window_size_inflation)
+        _, mu_inflation = self._get_inflation(change_type=change_type, window_size=window_size)
+        mu_smooth_inflation = uniform_filter1d(mu_inflation, size=window_size_inflation)
         time, mu, w_paid = self._skip_values(self.time_values, self.mu, self.w_paid) 
-        average_wage_paid = mu / w_paid
         time_for_diff = time[:-1]
+        PCE, PCE_inflation = self._load_inflation_data(source="PCE", change_type=change_type, annualized=annualized)
         
-        PCE, PCE_inflation = self._load_inflation_data(source="PCE", change_type=change_type)
+        # Calculate recession peaks and troughs
+        time_between, duration, troughs, peaks = self._recession_time_between_and_duration(**peak_kwargs, return_peaks=True)
+        df_recession_data = self._load_peak_trough_data()
+        peak_data = df_recession_data["peak"]
+        trough_data = df_recession_data["trough"]
 
-        # Create figure and unpack axis
-        fig, ax_arr = plt.subplots(figsize=(10, 5), ncols=2, nrows=2)
-        ax_mu = ax_arr[0, 0]
-        ax_PCE = ax_arr[0, 1]
-        ax_mu_change = ax_arr[1, 0]
-        ax_PCE_change = ax_arr[1, 1]
+        # Update peaks to include skip_values
+        for val_arr in (troughs, peaks):
+            val_arr += self.skip_values
                 
+        # Create figure and unpack axis
+        fig, ax_arr = plt.subplots(figsize=(10, 5), ncols=2, nrows=1)
+        ax_mu_change, ax_PCE_change = ax_arr
+
         # Plots
-        ax_mu.plot(time, average_wage_paid, c="black", label=r"$\mu/w_\text{paid}$")
-        ax_mu.plot(time, mu_smooth, c=self.colours["mu"], alpha=0.95, label=r"$\mu/w_\text{paid}$ smoothed")
-        ax_PCE.plot(PCE, c=self.colours["mu"])
-        
         ax_mu_change.plot(time_for_diff, mu_smooth_inflation, "-", color=self.colours["mu"], lw=1)
         ax_PCE_change.plot(PCE_inflation, "-", color=self.colours["mu"])
         
+        # Color recessions
+        for start, end in zip(peaks, troughs):
+            ax_mu_change.axvspan(start, end, color="gray", alpha=0.3)
+        
+        for start, end in zip(peak_data, trough_data):
+            ax_PCE_change.axvspan(start, end, color="gray", alpha=0.3)
+        
         # Axis setup
-        if change_type == "log":
-            ylabel_change = "Log Price Change"
-        else:
-            ylabel_change = "Percent Price Change"
+        ylabel_model = r"$\Delta \bar{s}_\text{real} / \bar{s}_\text{real}(t-1)$"
+        ylabel_data = "Monthly Inflation PCEPI"
         
         inflation_min = 1.02 * np.min((mu_smooth_inflation.min(), PCE_inflation.min().item()))
         inflation_max = 1.02 * np.max((mu_smooth_inflation.max(), PCE_inflation.max().item()))
-        ylim_inflation = (inflation_min, inflation_max)
-        ax_mu.set(ylabel="Price [a.u.]")
-        ax_PCE.set(ylabel="Relative price")
-        ax_mu_change.set(ylabel=ylabel_change, ylim=ylim_inflation)
-        ax_PCE_change.set(ylabel=ylabel_change, xlabel="Date", ylim=ylim_inflation)
+        if same_ylim:
+            ylim_inflation = (inflation_min, inflation_max)
+        else:
+            ylim_inflation = None
+        xlim_PCE = (PCE_inflation.index[0], PCE_inflation.index[-1])
+        ax_mu_change.set(ylabel=ylabel_model, ylim=ylim_inflation, xlabel="Time [a.u.]")
+        ax_PCE_change.set(ylabel=ylabel_data, xlabel="Date", ylim=ylim_inflation, xlim=xlim_PCE)
         # Grid
         for axis in ax_arr.flatten():
             axis.grid()
-        # Legend
-        ax_mu.legend(frameon=False, loc="upper left", ncols=2)       
         # Ticks
-        self._quick_axis_ticks(ax_mu, which="both", Nbins=3, integer=True)
         self._quick_axis_ticks(ax_mu_change, which="both", Nbins=3)
-        self._quick_axis_ticks(ax_PCE, which="y", Nbins=3, integer=True) 
         self._quick_axis_ticks(ax_PCE_change, which="y", Nbins=3, integer=False)
             
         # Text, save, show
         self._text_save_show(fig, ax_mu_change, f"inflation_comparison_{change_type}", xtext=0.05, ytext=0.85, fontsize=1)
         plt.close()
-
 
 
     def plot_CDF_parameter(self, gname_list_alpha, gname_list_smin, gname_list_m, gname_list_ds, 
@@ -4157,3 +4217,182 @@ class PlotMaster(general_functions.PlotMethods, PostProcess):
         fig.colorbar(im_KDE, cax=cbar_ax, label="Wage Frequency", ticks=[])
         # Text, save, show
         self._text_save_show(fig, ax_life, f"N_W", xtext=0.05, ytext=0.85, fontsize=1)
+
+
+    def _trimmed_spread_over_mean(self, wages, lower_pct=10, upper_pct=95, hard_lower_bound=None):
+        """
+        Calculate the spread over mean of a wage distribution,
+        excluding the tails (e.g. top and bottom 5%).
+
+        Parameters:
+            wages (np.ndarray or pd.Series): Array of wage values
+            lower_pct (float): Lower percentile cutoff (e.g. 5 for bottom 5%)
+            upper_pct (float): Upper percentile cutoff (e.g. 95 for top 5%)
+
+        Returns:
+            float: Spread over mean (std / mean) of the trimmed data
+        """
+        if hard_lower_bound is not None:
+            wages = wages[wages>hard_lower_bound]
+        lower_bound = np.percentile(wages, lower_pct)
+        upper_bound = np.percentile(wages, upper_pct)
+        trimmed = wages[(wages >= lower_bound) & (wages <= upper_bound)]
+        return np.std(trimmed) / np.mean(trimmed)
+
+
+    def _tau_table(self, lower_pct, upper_pct, tau_values, N_values, hard_lower_bound):
+        self._get_data(self.group_name)
+        SoM_arr = np.zeros((len(tau_values), len(N_values)))
+        for i, tau in enumerate(tau_values):
+            for j, N in enumerate(N_values):
+                if N == 10_000:
+                    hard_lower_bound_val = hard_lower_bound
+                else:
+                    hard_lower_bound_val = None
+                # Get data and calculate SoM
+                gname = self.new_gname(N=N, number_of_transactions_per_step=tau)
+                self._get_data(gname)
+                mu, s = self._skip_values(self.mu, self.s)
+                # average_wage = mu / self.W
+                # SoM = np.std(average_wage) / np.mean(average_wage)
+                SoM = self._trimmed_spread_over_mean(s, lower_pct, upper_pct, hard_lower_bound_val)  # Get rid of outlier values.
+                # Store
+                SoM_arr[i, j] = SoM
+        
+        return SoM_arr
+
+
+    def format_tau_table_latex(self, tau_values, N_values, alpha_values, lower_pct, upper_pct, hard_lower_bound):
+        SoM_arr = self._tau_table(lower_pct, upper_pct, tau_values, N_values, hard_lower_bound)
+        headers = ["$\\tau \\backslash N$"] + [f"{N}" for N in N_values]
+        table_data = []
+
+        for i, tau in enumerate(tau_values):
+            row = [f"{tau}"] + [f"{SoM_arr[i, j]:.2f}" for j in range(len(N_values))]
+            table_data.append(row)
+
+        latex_table = tabulate(table_data, headers, tablefmt="latex")
+        return latex_table
+
+
+
+    def trimmed_mean_over_N_vectorized(self, s, lower_pct=5, upper_pct=95, hard_lower_bound=0.04):
+        """
+        Compute the trimmed mean of s over N for each time step (axis=0),
+        applying a hard lower bound and trimming by percentiles, all vectorized.
+        
+        s: np.ndarray, shape (N, T)
+        """
+        # 1) Mask out everything below the hard lower bound
+        s_masked = s.copy()
+        if hard_lower_bound is not None:
+            s_masked[s_masked < hard_lower_bound] = np.nan
+
+        # 2) Compute the per-column (per-time) percentiles, ignoring NaNs
+        lower = np.nanpercentile(s_masked, lower_pct, axis=0)  # shape (T,)
+        upper = np.nanpercentile(s_masked, upper_pct, axis=0)  # shape (T,)
+
+        # 3) Mask out everything outside [lower, upper]
+        #    We need to broadcast lower/upper across rows:
+        too_low  = s_masked < lower[np.newaxis, :]
+        too_high = s_masked > upper[np.newaxis, :]
+        s_masked[too_low | too_high] = np.nan
+
+        # 4) Finally, take the mean over N (rows), ignoring NaNs
+        #    This gives an array of length T
+        return np.nanmean(s_masked, axis=0)
+
+
+    def plot_tau(self, lower_pct, upper_pct, hard_lower_bound=None, time_values_to_show=None, 
+                 tau_values=[1, 2, 4, 100], N=1000, bandwidth=0.005, eval_points=250, kernel="gaussian",
+                 s_lim=(0, 0.2), show_mean=True):
+        # Create figure
+        fig, ax_list = plt.subplots(nrows=len(tau_values), ncols=1, sharex=True, sharey=True)
+        
+        # Get xlim
+        self._get_data(self.group_name)        
+        if time_values_to_show is None:
+            xlim = (self.skip_values, self.time_steps)
+        else:
+            xlim = (self.skip_values, self.skip_values+time_values_to_show)        
+        x_ticks = np.linspace(xlim[0], xlim[-1], 5).astype(np.int32)
+        x_ticklabels = x_ticks[::2]
+        
+        # Load SoM values
+        SoM_arr = self._tau_table(tau_values=tau_values, N_values=[N], lower_pct=lower_pct, upper_pct=upper_pct, hard_lower_bound=hard_lower_bound).flatten()
+        # Create plotter function
+        def _plotter(idx):
+            # Get axis and gname
+            axis = ax_list[idx]
+            tau = tau_values[idx]            
+            gname = self.new_gname(number_of_transactions_per_step=tau, N=N)
+            # Get KDE
+            s_eval, KDE = self.running_KDE("salary", bandwidth, eval_points, kernel, s_lim, gname)
+            # Get wage
+            s, time, mu = self._skip_values(self.s, self.time_values, self.mu)
+            if N == 10_000:
+                hard_lower_bound_val = hard_lower_bound
+            else:
+                hard_lower_bound_val = None
+            s_trimmed = self.trimmed_mean_over_N_vectorized(s, lower_pct, upper_pct, hard_lower_bound_val)
+            # s_trimmed = mu / self.W
+            # Get spread / mean
+            SoM = SoM_arr[idx]
+            # SoM = np.std(s) / np.mean(s)  # OBS Maybe has to cut off the lowest 5% as we only want the mean of the cycle values
+            # Plot KDE
+            axis.imshow(KDE, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, s_lim[0], s_lim[-1]], cmap="hot")
+            if show_mean: axis.plot(time, s_trimmed, c="magenta", lw=0.55)
+            axis.set(ylabel="Wage [$]", xlim=xlim)
+            # Label
+            self._subplot_label(axis, idx, suffix=fr"), $\tau={tau}$, SoM = {SoM:.2f}", color="white", outline_color="black")
+            # y ticks
+            self._quick_axis_ticks(axis, which="y", Nbins=3, integer=False)        
+            self._axis_ticks_and_labels(axis, x_ticks=x_ticks, x_labels=x_ticklabels, x_dtype="int")
+        
+        for i in tqdm(range(len(tau_values))):
+            _plotter(i)
+        
+        ax_list[-1].set(xlabel="Time [a.u.]")
+        # Text, save, show
+        self._text_save_show(fig, ax_list[0], f"tau", xtext=0.05, ytext=0.85, fontsize=1)        
+
+
+
+    def plot_inject_money(self, inject_money_time, bandwidth, s_lim, eval_points=250, kernel="gaussian", show_mean=True):
+        # Load data by getting the gname and change one to have inject_money_time=0 and one to the given variable
+        self._get_data(self.group_name)
+        
+        gname_inj0 = self.new_gname(inject_money_time=0)
+        gname_inj = self.new_gname(inject_money_time=inject_money_time)
+        
+        s_eval_inj0, KDE_prob_inj0 = self.running_KDE("salary", bandwidth, eval_points, kernel, s_lim, gname=gname_inj0)  # KDE probabilities        
+        time, mu_inj0 = self._skip_values(self.time_values, self.mu)
+        
+        s_eval_inj, KDE_prob_inj = self.running_KDE("salary", bandwidth, eval_points, kernel, s_lim, gname=gname_inj)  # KDE probabilities        
+        mu_inj = self._skip_values(self.mu)
+        
+        fig, (ax, ax_inj) = plt.subplots(nrows=2, ncols=1, sharex=True, sharey=True)
+        
+        # The no injection i.e. at 0
+        im = ax.imshow(KDE_prob_inj0, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(s_eval_inj0), np.max(s_eval_inj0)], cmap="hot")
+        if show_mean: ax.plot(time, mu_inj0/self.W, c="magenta", lw=0.6)
+        ax.set_ylabel("Wage [$]")
+    
+        # Injection
+        im_inj = ax_inj.imshow(KDE_prob_inj, aspect="auto", origin="lower", extent=[self.skip_values, self.time_steps, np.min(s_eval_inj), np.max(s_eval_inj)], cmap="hot")
+        if show_mean: ax_inj.plot(time, mu_inj/self.W, c="magenta", lw=0.6)
+        ax_inj.set(ylabel="Wage [$]", xlabel="Time [a.u.]")
+
+        # Axis ticks
+        x_max = self.time_steps - self.skip_values
+        x_min = self.skip_values
+        x_ticks = np.linspace(x_min, x_max, 5)
+        self._quick_axis_ticks(ax, which="y", Nbins=3, integer=False,)
+        self._quick_axis_ticks(ax, which="x", Nbins=3, integer=True,)
+
+        # Subplot labels
+        self._subplot_label(ax, 0, color="white", suffix="): Standard")
+        self._subplot_label(ax_inj, 1, color="white", suffix="): Injecting money")
+
+        # Text, save, show
+        self._text_save_show(fig, ax, f"injection", xtext=0.05, ytext=0.85, fontsize=1)

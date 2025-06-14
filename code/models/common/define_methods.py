@@ -3,7 +3,7 @@ from master import WorkForce
 
 
 class MethodsWorkForce(WorkForce):
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods: dict, inject_money_time, time_steps, seed):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, number_of_transactions_per_step, update_methods: dict, inject_money_time, time_steps, seed):
         """Must define the following methods for master to work:
             _transaction()
             _pay_interest()
@@ -19,6 +19,7 @@ class MethodsWorkForce(WorkForce):
         self.transaction_method = update_methods["transaction_method"]
         self.include_bankrupt_salary_in_mu = update_methods["include_bankrupt_salary_in_mu"]
         self.who_want_to_increase = update_methods["who_want_to_increase"]
+        self.number_of_transactions_per_step = number_of_transactions_per_step
         super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, inject_money_time, time_steps, seed)
         
         # Initial values and choice of methods
@@ -104,9 +105,50 @@ class MethodsWorkForce(WorkForce):
 
 
     def _inject_money(self):
-        if self.current_time == self.inject_money_time:
+        if not isinstance(self.inject_money_time, list):
+            self.inject_money_time = [self.inject_money_time]
+        if self.current_time in self.inject_money_time:
             self.system_money_spent *= 1.5
-        
+    
+    
+    def _transaction_new(self):
+        number_of_companies_transacting = int(self.N * 1.5)
+        product_price = self.mu / self.W
+        no_legal_companies = 0
+        for _ in range(number_of_companies_transacting):
+            # Choose company
+            idx = np.random.randint(low=0, high=self.N)
+            # Perform transaction and update mu
+            profit = (self.salary[idx] - product_price) * self.w[idx]
+            self.d[idx] += profit
+            self.system_money_spent += self.salary[idx] * self.w[idx]
+            # Change wage
+            negative_correction = 1 / (1 + self.ds)
+            if profit > 0:  # lost money
+                self.salary[idx] = self.salary[idx] * (1 - self.ds * negative_correction)
+            elif profit < 0 or self.w[idx] == 0:
+                self.salary[idx] = self.salary[idx] * (1 + self.ds)
+            self.salary = np.maximum(self.salary, self.salary_min)            
+            
+            # Check for bankruptcy
+            if self.d[idx] > 0:
+                self.went_bankrupt_idx[idx] = True
+                self.went_bankrupt += 1
+                self.d[idx] = 0
+                self.w[idx] = 0
+                # Choose random, living company's wage
+                nonzero_workers = self.w > 0
+                profit = self.d - self.d_hist[:, self.current_time - 1]
+                made_profit_nonzero_workers_idx = profit < 0 & nonzero_workers  # debt is negative capital thus <0
+                mutation = np.random.uniform(-self.mutation_magnitude, self.mutation_magnitude)
+                if made_profit_nonzero_workers_idx.sum() == 0:
+                    new_salary = np.random.uniform(self.salary_min, self.salary.max()) + mutation
+                    no_legal_companies += 1
+                else:
+                    idx_new_salary = np.random.choice(np.arange(self.N)[made_profit_nonzero_workers_idx], size=1) 
+                    new_salary = self.salary[idx_new_salary] + mutation
+                self.salary[idx] = np.maximum(new_salary, self.salary_min)
+
 
     def _transaction(self):
         
@@ -118,7 +160,7 @@ class MethodsWorkForce(WorkForce):
             transaction_order = np.random.choice(np.arange(self.N), size=self.N, replace=False)
             for idx in transaction_order:        
                 # Update
-                self.d[idx] += salary_payments[idx] + sell_values[idx]
+                self.d[idx] += salary_payments[idx] - sell_values[idx]
                 
             self.system_money_spent = salary_payments.sum()
         
@@ -126,13 +168,13 @@ class MethodsWorkForce(WorkForce):
             # Use the salaries of last time step
             salary_last_time = self.s_hist[:, self.current_time - 1]
             # Pick the indices of the companies that will sell, Only w>0 companies perform transactions
-            number_of_companies_selling = np.sum(self.w > 0)
+            number_of_companies_selling = int(np.sum(self.w > 0) * self.number_of_transactions_per_step)
             idx_companies_selling = np.random.choice(np.arange(self.N)[self.w > 0], size=number_of_companies_selling, replace=True)
                             
             # Find which companies that sells and how many times they do it
             idx_unique, counts = np.unique(idx_companies_selling, return_counts=True)
             # Find how much each of the chosen companies sell for
-            sell_unique = self.w[idx_unique] * self.mu / self.W   
+            sell_unique = self.w[idx_unique] * self.mu / self.W / self.number_of_transactions_per_step 
             # Multiply that by how many times they sold
             sell_unique_all = sell_unique * counts
             # Update values
@@ -142,7 +184,7 @@ class MethodsWorkForce(WorkForce):
             # Wage i.e. pay workers every time a job is done
             if self.transaction_method == "wage":
                 # Do the same as with the capital, find unique and counts.
-                salary_unique = salary_last_time[idx_unique] * self.w[idx_unique]
+                salary_unique = salary_last_time[idx_unique] * self.w[idx_unique] / self.number_of_transactions_per_step
                 salary_unique_all = salary_unique * counts
                 
                 if not self.include_bankrupt_salary_in_mu:

@@ -17,7 +17,9 @@ file_path = dir_path_output / file_name
 
 
 class RunWorkForce(MethodsWorkForce):
-    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, prob_exponent, salary_min, update_methods, inject_money_time, time_steps, seed):
+    def __init__(self, number_of_companies, number_of_workers, salary_increase, interest_rate_free, 
+                 mutation_magnitude, prob_exponent, salary_min, number_of_transactions_per_step, 
+                 update_methods, inject_money_time, time_steps, seed):
         """Functions for running the simulation and storing the data.
 
         Args:
@@ -38,7 +40,7 @@ class RunWorkForce(MethodsWorkForce):
             number_of_workers = number_of_companies
         self.rf_name = interest_rate_free
         
-        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, update_methods, inject_money_time, time_steps, seed)
+        super().__init__(number_of_companies, number_of_workers, salary_increase, interest_rate_free, mutation_magnitude, salary_min, number_of_transactions_per_step, update_methods, inject_money_time, time_steps, seed)
 
 
     def store_data_in_group(self, print_info=True):
@@ -84,6 +86,7 @@ class RunWorkForce(MethodsWorkForce):
             group.attrs["m"] = self.mutation_magnitude
             group.attrs["prob_expo"] = self.prob_exponent
             group.attrs["s_min"] = self.salary_min
+            group.attrs["seed"] = self.seed
             
             
     def repeated_m_runs(self, N_repeat, m_values):

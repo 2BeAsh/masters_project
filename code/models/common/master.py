@@ -28,7 +28,11 @@ class WorkForce():
     
             
     def _get_group_name(self):
-        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_rf{self.rf_name}_alpha{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}_increase{self.who_want_to_increase}_injectmoney{self.inject_money_time}"
+        if isinstance(self.inject_money_time, list):
+            inject_money_time = self.inject_money_time[0]
+        else:
+            inject_money_time = self.inject_money_time
+        return f"Steps{self.time_steps}_N{self.N}_W{self.W}_ds{self.ds}_m{self.mutation_magnitude}_rf{self.rf_name}_alpha{self.prob_exponent}_smin{self.salary_min}_seed{self.seed}_increase{self.who_want_to_increase}_transactionsfactor{self.number_of_transactions_per_step}_injectmoney{inject_money_time}"
     
     
     def _initialize_market_variables(self):
