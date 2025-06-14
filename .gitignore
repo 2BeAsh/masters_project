@@ -174,3 +174,4 @@ cython_debug/
 *.csv
 *.pkl
 *.h5
+*.pdf
